@@ -6,7 +6,7 @@
 /* Suggest */
 .monaco-editor .suggest-widget {
 	z-index: 40;
-	width: 438px;
+	width: 660px;
 }
 
 .monaco-editor .suggest-widget.visible {
@@ -23,7 +23,9 @@
 
 .monaco-editor .suggest-widget > .tree {
 	height: 100%;
-	width: 100%;
+	width: 40%;
+	float: left;
+	box-sizing: border-box;
 }
 
 .monaco-editor .suggest-widget .monaco-list .monaco-list-row {
@@ -160,8 +162,7 @@
 }
 
 .monaco-editor .suggest-widget .details {
-	height: 100%;
-	box-sizing: border-box;
+	max-height: 216px;
 	display: flex;
 	flex-direction: column;
 	cursor: default;

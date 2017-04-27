@@ -653,6 +653,10 @@ export class List<T> implements ISpliceable<T>, IDisposable {
 		this.view.setScrollTop(scrollTop);
 	}
 
+	elementTop(index: number): number {
+		return this.view.elementTop(index);
+	}
+
 	layout(height?: number): void {
 		this.view.layout(height);
 	}
