@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import nls = require('vs/nls');
+import * as nls from 'vs/nls';
 
 import { registerColor, ColorIdentifier } from 'vs/platform/theme/common/colorRegistry';
 
@@ -12,6 +12,22 @@ import { registerColor, ColorIdentifier } from 'vs/platform/theme/common/colorRe
  * of the color in the terminal color table.
  */
 export const ansiColorIdentifiers: ColorIdentifier[] = [];
+
+export const TERMINAL_BACKGROUND_COLOR = registerColor('terminal.background', null, nls.localize('terminal.background', 'The background color of the terminal, this allows coloring the terminal differently to the panel.'));
+export const TERMINAL_FOREGROUND_COLOR = registerColor('terminal.foreground', {
+	light: '#333333',
+	dark: '#CCCCCC',
+	hc: '#FFFFFF'
+}, nls.localize('terminal.foreground', 'The foreground color of the terminal.'));
+export const TERMINAL_CURSOR_FOREGROUND_COLOR = registerColor('terminalCursor.foreground', null, nls.localize('terminalCursor.foreground', 'The foreground color of the terminal cursor.'));
+export const TERMINAL_CURSOR_BACKGROUND_COLOR = registerColor('terminalCursor.background', null, nls.localize('terminalCursor.background', 'The background color of the terminal cursor. Allows customizing the color of a character overlapped by a block cursor.'));
+
+// TODO: Reinstate, see #28397
+// export const TERMINAL_SELECTION_BACKGROUND_COLOR = registerColor('terminal.selectionBackground', {
+// 	light: '#000',
+// 	dark: '#FFF',
+// 	hc: '#FFF'
+// }, nls.localize('terminal.selectionBackground', 'The selection background color of the terminal.'));
 
 const ansiColorMap = {
 	'terminal.ansiBlack': {
@@ -150,4 +166,5 @@ export function registerColors(): void {
 		let colorName = id.substring(13);
 		ansiColorIdentifiers[entry.index] = registerColor(id, entry.defaults, nls.localize('terminal.ansiColor', '\'{0}\' ansi color in the terminal.', colorName));
 	}
+
 }
