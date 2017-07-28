@@ -420,7 +420,7 @@ function globExprsToRgGlobs(patterns: glob.IExpression, folder: string): IRgGlob
 			key = getAbsoluteGlob(folder, key);
 
 			if (typeof value === 'boolean' && value) {
-				globArgs.push(key);
+				globArgs.push(fixDriveC(key));
 			} else if (value && value.when) {
 				if (!siblingClauses) {
 					siblingClauses = {};
@@ -440,14 +440,21 @@ function globExprsToRgGlobs(patterns: glob.IExpression, folder: string): IRgGlob
  * Exported for testing
  */
 export function getAbsoluteGlob(folder: string, key: string): string {
-	const absolutePathKey = paths.isAbsolute(key) ?
+	let absolute = paths.isAbsolute(key) ?
 		key :
 		path.join(folder, key);
 
-	const root = paths.getRoot(folder);
+	absolute = strings.rtrim(absolute, '\\');
+	absolute = strings.rtrim(absolute, '/');
+
+	return absolute;
+}
+
+export function fixDriveC(path: string): string {
+	const root = paths.getRoot(path);
 	return root.toLowerCase() === 'c:/' ?
-		absolutePathKey.replace(/^c:[/\\]/i, '/') :
-		absolutePathKey;
+		path.replace(/^c:[/\\]/i, '/') :
+		path;
 }
 
 function getRgArgs(config: IRawSearch): IRgGlobResult {

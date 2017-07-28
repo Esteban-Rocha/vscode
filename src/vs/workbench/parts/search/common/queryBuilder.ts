@@ -135,17 +135,19 @@ export class QueryBuilder {
 			return [];
 		}
 
-		return arrays.flatten(searchPaths.map(searchPath => {
+		const searchPathPatterns = arrays.flatten(searchPaths.map(searchPath => {
 			// 1 open folder => just resolve the search paths to absolute paths
 			const { pathPortion, globPortion } = splitGlobFromPath(searchPath);
 			const pathPortions = this.expandAbsoluteSearchPaths(pathPortion);
 			return pathPortions.map(searchPath => {
 				return <ISearchPathPattern>{
-					searchPath: uri.parse(searchPath),
+					searchPath: uri.file(searchPath),
 					pattern: globPortion
 				};
 			});
 		}));
+
+		return searchPathPatterns.filter(arrays.uniqueFilter(searchPathPattern => searchPathPattern.searchPath.toString()));
 	}
 
 	/**
@@ -153,19 +155,26 @@ export class QueryBuilder {
 	 */
 	private expandAbsoluteSearchPaths(searchPath: string): string[] {
 		if (paths.isAbsolute(searchPath)) {
-			return [searchPath];
+			return [paths.normalize(searchPath)];
 		}
 
 		const workspace = this.workspaceContextService.getWorkspace();
-		if (workspace.roots.length === 1) {
-			return [paths.join(workspace.roots[0].fsPath, searchPath)];
+		if (searchPath === './') {
+			return [];
+		} else if (workspace.roots.length === 1) {
+			return [paths.normalize(
+				paths.join(workspace.roots[0].fsPath, searchPath))];
 		} else {
 			const relativeSearchPathMatch = searchPath.match(/\.\/([^\/]+)(\/.+)?/);
 			if (relativeSearchPathMatch) {
 				const searchPathRoot = relativeSearchPathMatch[1];
 				const matchingRoots = workspace.roots.filter(root => paths.basename(root.fsPath) === searchPathRoot);
 				if (matchingRoots.length) {
-					return matchingRoots.map(root => paths.join(root.fsPath, relativeSearchPathMatch[2] || ''));
+					return matchingRoots.map(root => {
+						return relativeSearchPathMatch[2] ?
+							paths.normalize(paths.join(root.fsPath, relativeSearchPathMatch[2])) :
+							root.fsPath;
+					});
 				} else {
 					// throw new Error(nls.localize('search.invalidRootFolder', 'No root folder named {}', searchPathRoot));
 				}
@@ -194,8 +203,14 @@ function splitGlobFromPath(searchPath: string): { pathPortion: string, globPorti
 		const globCharIdx = globCharMatch.index;
 		const lastSlashMatch = searchPath.substr(0, globCharIdx).match(/[/|\\][^/\\]*$/);
 		if (lastSlashMatch) {
+			let pathPortion = searchPath.substr(0, lastSlashMatch.index);
+			if (!pathPortion.match(/[/\\]/)) {
+				// If the last slash was the only slash, then we now have '' or 'C:'. Append a slash.
+				pathPortion += '/';
+			}
+
 			return {
-				pathPortion: searchPath.substr(0, lastSlashMatch.index) || '/',
+				pathPortion,
 				globPortion: searchPath.substr(lastSlashMatch.index + 1)
 			};
 		}

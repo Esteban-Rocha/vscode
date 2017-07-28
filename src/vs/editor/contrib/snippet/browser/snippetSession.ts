@@ -212,25 +212,6 @@ export class OneSnippet {
 	}
 }
 
-class WhitespaceAwareSnippetResolver extends EditorSnippetVariableResolver {
-
-	constructor(
-		model: IModel,
-		selection: Selection,
-		private _snippetStart: IPosition
-	) {
-		super(model, selection);
-	}
-
-	resolve(name: string): string {
-		let ret = super.resolve(name);
-		if (ret) {
-			ret = SnippetSession.adjustWhitespace(this._model, this._snippetStart, ret);
-		}
-		return ret;
-	}
-}
-
 export class SnippetSession {
 
 	static adjustWhitespace(model: IModel, position: IPosition, template: string): string {
@@ -315,15 +296,15 @@ export class SnippetSession {
 
 			const snippet = new SnippetParser()
 				.parse(adjustedTemplate, true, enforceFinalTabstop)
-				.resolveVariables(new WhitespaceAwareSnippetResolver(model, selection, start));
+				.resolveVariables(new EditorSnippetVariableResolver(model, selection));
 
 			const offset = model.getOffsetAt(start) + delta;
-			delta += snippet.text.length - model.getValueLengthInRange(snippetSelection);
+			delta += snippet.toString().length - model.getValueLengthInRange(snippetSelection);
 
 			// store snippets with the index of their originating selection.
 			// that ensures the primiary cursor stays primary despite not being
 			// the one with lowest start position
-			edits[idx] = EditOperation.replace(snippetSelection, snippet.text);
+			edits[idx] = EditOperation.replace(snippetSelection, snippet.toString());
 			snippets[idx] = new OneSnippet(editor, snippet, offset);
 		}
 

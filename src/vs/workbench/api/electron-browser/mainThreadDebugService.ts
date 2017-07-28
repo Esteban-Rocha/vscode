@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 'use strict';
 
+import URI from 'vs/base/common/uri';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
 import { IDebugService, IConfig } from 'vs/workbench/parts/debug/common/debug';
 import { IThreadService } from 'vs/workbench/services/thread/common/threadService';
@@ -44,19 +45,19 @@ export class MainThreadDebugService extends MainThreadDebugServiceShape {
 		this._toDispose = dispose(this._toDispose);
 	}
 
-	public $startDebugging(nameOrConfiguration: string | IConfig): TPromise<boolean> {
-		return this.debugService.startDebugging(nameOrConfiguration).then(x => {
+	public $startDebugging(folderUri: URI | undefined, nameOrConfiguration: string | IConfig): TPromise<boolean> {
+		return this.debugService.startDebugging(folderUri, nameOrConfiguration).then(x => {
 			return true;
 		}, err => {
 			return TPromise.wrapError(err && err.message ? err.message : 'cannot start debugging');
 		});
 	}
 
-	public $startDebugSession(configuration: IConfig): TPromise<DebugSessionUUID> {
+	public $startDebugSession(folderUri: URI | undefined, configuration: IConfig): TPromise<DebugSessionUUID> {
 		if (configuration.request !== 'launch' && configuration.request !== 'attach') {
 			return TPromise.wrapError(new Error(`only 'launch' or 'attach' allowed for 'request' attribute`));
 		}
-		return this.debugService.createProcess(configuration).then(process => {
+		return this.debugService.createProcess(folderUri, configuration).then(process => {
 			if (process) {
 				return <DebugSessionUUID>process.getId();
 			}
