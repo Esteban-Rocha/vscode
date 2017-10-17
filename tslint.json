@@ -355,7 +355,7 @@
 					"**/vs/base/**",
 					"**/vs/platform/**",
 					"**/vs/editor/**",
-					"**/vs/workbench/{common,browser,node,electron-browser}/**",
+					"**/vs/workbench/{common,browser,node,electron-browser,api}/**",
 					"**/vs/workbench/services/**",
 					"*" // node modules
 				]
@@ -391,16 +391,6 @@
 			}
 		],
 		"duplicate-imports": true,
-		"allow-async": [
-			true,
-			[
-				"node",
-				"electron-main",
-				"electron-browser",
-				"extensions",
-				"smoke"
-			]
-		],
 		"translation-remind": true
 	}
 }

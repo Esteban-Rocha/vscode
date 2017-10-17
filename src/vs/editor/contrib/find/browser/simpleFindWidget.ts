@@ -5,74 +5,16 @@
 
 import 'vs/css!./simpleFindWidget';
 import * as nls from 'vs/nls';
-import { IKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { Widget } from 'vs/base/browser/ui/widget';
+import { Delayer } from 'vs/base/common/async';
+import { HistoryNavigator } from 'vs/base/common/history';
 import { KeyCode, KeyMod } from 'vs/base/common/keyCodes';
 import * as dom from 'vs/base/browser/dom';
 import { FindInput } from 'vs/base/browser/ui/findinput/findInput';
 import { IContextViewService } from 'vs/platform/contextview/browser/contextView';
 import { registerThemingParticipant, ITheme } from 'vs/platform/theme/common/themeService';
 import { inputBackground, inputActiveOptionBorder, inputForeground, inputBorder, inputValidationInfoBackground, inputValidationInfoBorder, inputValidationWarningBackground, inputValidationWarningBorder, inputValidationErrorBackground, inputValidationErrorBorder, editorWidgetBackground, widgetShadow } from 'vs/platform/theme/common/colorRegistry';
-
-interface IButtonOpts {
-	label: string;
-	className: string;
-	onTrigger: () => void;
-	onKeyDown: (e: IKeyboardEvent) => void;
-}
-
-class SimpleButton extends Widget {
-
-	private _opts: IButtonOpts;
-	private _domNode: HTMLElement;
-
-	constructor(opts: IButtonOpts) {
-		super();
-		this._opts = opts;
-
-		this._domNode = document.createElement('div');
-		this._domNode.title = this._opts.label;
-		this._domNode.tabIndex = 0;
-		this._domNode.className = 'button ' + this._opts.className;
-		this._domNode.setAttribute('role', 'button');
-		this._domNode.setAttribute('aria-label', this._opts.label);
-
-		this.onclick(this._domNode, (e) => {
-			this._opts.onTrigger();
-			e.preventDefault();
-		});
-		this.onkeydown(this._domNode, (e) => {
-			if (e.equals(KeyCode.Space) || e.equals(KeyCode.Enter)) {
-				this._opts.onTrigger();
-				e.preventDefault();
-				return;
-			}
-			this._opts.onKeyDown(e);
-		});
-	}
-
-	public get domNode(): HTMLElement {
-		return this._domNode;
-	}
-
-	public isEnabled(): boolean {
-		return (this._domNode.tabIndex >= 0);
-	}
-
-	public focus(): void {
-		this._domNode.focus();
-	}
-
-	public setEnabled(enabled: boolean): void {
-		dom.toggleClass(this._domNode, 'disabled', !enabled);
-		this._domNode.setAttribute('aria-disabled', String(!enabled));
-		this._domNode.tabIndex = enabled ? 0 : -1;
-	}
-
-	public toggleClass(className: string, shouldHaveIt: boolean): void {
-		dom.toggleClass(this._domNode, className, shouldHaveIt);
-	}
-}
+import { SimpleButton } from './findWidget';
 
 const NLS_FIND_INPUT_LABEL = nls.localize('label.find', "Find");
 const NLS_FIND_INPUT_PLACEHOLDER = nls.localize('placeholder.find', "Find");
@@ -83,8 +25,12 @@ const NLS_CLOSE_BTN_LABEL = nls.localize('label.closeButton', "Close");
 export abstract class SimpleFindWidget extends Widget {
 	protected _findInput: FindInput;
 	protected _domNode: HTMLElement;
+	protected _innerDomNode: HTMLElement;
 	protected _isVisible: boolean;
 	protected _focusTracker: dom.IFocusTracker;
+	protected _findInputFocusTracker: dom.IFocusTracker;
+	protected _findHistory: HistoryNavigator<string>;
+	protected _updateHistoryDelayer: Delayer<void>;
 
 	constructor(
 		@IContextViewService private _contextViewService: IContextViewService,
@@ -96,8 +42,13 @@ export abstract class SimpleFindWidget extends Widget {
 			placeholder: NLS_FIND_INPUT_PLACEHOLDER,
 		}));
 
+		// Find History with update delayer
+		this._findHistory = new HistoryNavigator<string>();
+		this._updateHistoryDelayer = new Delayer<void>(500);
+
 		this.oninput(this._findInput.domNode, (e) => {
 			this.onInputChanged();
+			this._delayedUpdateHistory();
 		});
 
 		this._register(this._findInput.onKeyDown((e) => {
@@ -141,14 +92,19 @@ export abstract class SimpleFindWidget extends Widget {
 			onKeyDown: (e) => { }
 		});
 
-		this._domNode = document.createElement('div');
-		this._domNode.classList.add('simple-find-part');
-		this._domNode.appendChild(this._findInput.domNode);
-		this._domNode.appendChild(prevBtn.domNode);
-		this._domNode.appendChild(nextBtn.domNode);
-		this._domNode.appendChild(closeBtn.domNode);
+		this._innerDomNode = document.createElement('div');
+		this._innerDomNode.classList.add('simple-find-part');
+		this._innerDomNode.appendChild(this._findInput.domNode);
+		this._innerDomNode.appendChild(prevBtn.domNode);
+		this._innerDomNode.appendChild(nextBtn.domNode);
+		this._innerDomNode.appendChild(closeBtn.domNode);
 
-		this.onkeyup(this._domNode, e => {
+		// _domNode wraps _innerDomNode, ensuring that
+		this._domNode = document.createElement('div');
+		this._domNode.classList.add('simple-find-part-wrapper');
+		this._domNode.appendChild(this._innerDomNode);
+
+		this.onkeyup(this._innerDomNode, e => {
 			if (e.equals(KeyCode.Escape)) {
 				this.hide();
 				e.preventDefault();
@@ -156,19 +112,25 @@ export abstract class SimpleFindWidget extends Widget {
 			}
 		});
 
-		this._focusTracker = this._register(dom.trackFocus(this._domNode));
+		this._focusTracker = this._register(dom.trackFocus(this._innerDomNode));
 		this._register(this._focusTracker.addFocusListener(this.onFocusTrackerFocus.bind(this)));
 		this._register(this._focusTracker.addBlurListener(this.onFocusTrackerBlur.bind(this)));
 
-		this._register(dom.addDisposableListener(this._domNode, 'click', (event) => {
+		this._findInputFocusTracker = this._register(dom.trackFocus(this._findInput.domNode));
+		this._register(this._findInputFocusTracker.addFocusListener(this.onFindInputFocusTrackerFocus.bind(this)));
+		this._register(this._findInputFocusTracker.addBlurListener(this.onFindInputFocusTrackerBlur.bind(this)));
+
+		this._register(dom.addDisposableListener(this._innerDomNode, 'click', (event) => {
 			event.stopPropagation();
 		}));
 	}
 
-	protected abstract onInputChanged();
-	protected abstract find(previous: boolean);
-	protected abstract onFocusTrackerFocus();
-	protected abstract onFocusTrackerBlur();
+	protected abstract onInputChanged(): void;
+	protected abstract find(previous: boolean): void;
+	protected abstract onFocusTrackerFocus(): void;
+	protected abstract onFocusTrackerBlur(): void;
+	protected abstract onFindInputFocusTrackerFocus(): void;
+	protected abstract onFindInputFocusTrackerBlur(): void;
 
 	protected get inputValue() {
 		return this._findInput.getValue();
@@ -207,13 +169,13 @@ export abstract class SimpleFindWidget extends Widget {
 		this._isVisible = true;
 
 		setTimeout(() => {
-			dom.addClass(this._domNode, 'visible');
-			this._domNode.setAttribute('aria-hidden', 'false');
+			dom.addClass(this._innerDomNode, 'visible');
+			this._innerDomNode.setAttribute('aria-hidden', 'false');
 			if (!this.animate) {
-				dom.addClass(this._domNode, 'noanimation');
+				dom.addClass(this._innerDomNode, 'noanimation');
 			}
 			setTimeout(() => {
-				dom.removeClass(this._domNode, 'noanimation');
+				dom.removeClass(this._innerDomNode, 'noanimation');
 				this._findInput.select();
 			}, 200);
 		}, 0);
@@ -223,8 +185,32 @@ export abstract class SimpleFindWidget extends Widget {
 		if (this._isVisible) {
 			this._isVisible = false;
 
-			dom.removeClass(this._domNode, 'visible');
-			this._domNode.setAttribute('aria-hidden', 'true');
+			dom.removeClass(this._innerDomNode, 'visible');
+			this._innerDomNode.setAttribute('aria-hidden', 'true');
+		}
+	}
+
+	protected _delayedUpdateHistory() {
+		this._updateHistoryDelayer.trigger(this._updateHistory.bind(this));
+	}
+
+	protected _updateHistory() {
+		if (this.inputValue) {
+			this._findHistory.add(this._findInput.getValue());
+		}
+	}
+
+	public showNextFindTerm() {
+		let next = this._findHistory.next();
+		if (next) {
+			this._findInput.setValue(next);
+		}
+	}
+
+	public showPreviousFindTerm() {
+		let previous = this._findHistory.previous();
+		if (previous) {
+			this._findInput.setValue(previous);
 		}
 	}
 }

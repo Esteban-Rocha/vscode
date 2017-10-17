@@ -53,6 +53,9 @@
 	"badgeBackground": "Colore di sfondo del badge. I badge sono piccole etichette informative, ad esempio per mostrare il conteggio dei risultati di una ricerca.",
 	"badgeForeground": "Colore primo piano del badge. I badge sono piccole etichette informative, ad esempio per mostrare il conteggio dei risultati di una ricerca.",
 	"scrollbarShadow": "Ombra di ScrollBar per indicare lo scorrimento della visualizzazione.",
+	"scrollbarSliderBackground": "Colore di sfondo dello slider della barra di scorrimento.",
+	"scrollbarSliderHoverBackground": "Colore di sfondo dello Slider della Barra di scorrimento al passaggio del mouse.",
+	"scrollbarSliderActiveBackground": "Colore di sfondo dello Slider della Barra di scorrimento quando è attivo.",
 	"progressBarBackground": "Colore di sfondo dell'indicatore di stato che può essere mostrato durante l'esecuzione di operazioni lunghe.",
 	"editorBackground": "Colore di sfondo dell'editor.",
 	"editorForeground": "Colore primo piano predefinito dell'editor.",
@@ -82,5 +85,7 @@
 	"mergeBorder": "Colore bordo su intestazioni e sulla barra di divisione di conflitti di merge in linea.",
 	"overviewRulerCurrentContentForeground": "Colore primo piano righello panoramica attuale per i conflitti di merge in linea.",
 	"overviewRulerIncomingContentForeground": "Colore primo piano del righello panoramica modifiche in arrivo per i conflitti di merge in linea.",
-	"overviewRulerCommonContentForeground": "Colore primo piano righello panoramica dell'antenato comune per i conflitti di merge in linea."
+	"overviewRulerCommonContentForeground": "Colore primo piano righello panoramica dell'antenato comune per i conflitti di merge in linea.",
+	"overviewRulerFindMatchForeground": "Colore del marcatore del righello delle annotazioni per le corrispondenze della ricerca.",
+	"overviewRulerSelectionHighlightForeground": "Colore del marcatore del righello delle annotazioni per le evidenziazioni delle selezioni."
 }

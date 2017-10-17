@@ -15,7 +15,11 @@
         "url": "https://github.com/Microsoft/vscode-emmet"
     },
     "activationEvents": [
-        "*"
+        "onCommand:type",
+        "onLanguage:html",
+        "onLanguage:css",
+        "onLanguage:scss",
+        "onLanguage:less"
     ],
     "main": "./out/extension",
     "contributes": {
@@ -32,18 +36,18 @@
                         "always",
                         "inMarkupAndStylesheetFilesOnly"
                     ],
-                    "default": "inMarkupAndStylesheetFilesOnly",
-                    "description": "Applicable only when emmet.useNewEmmet is set to true.\nShows expanded emmet abbreviations as suggestions.\nThe option \"inMarkupAndStylesheetFilesOnly\" applies to html, haml, jade, slim, xml, xsl, css, scss, sass, less and stylus.\nThe option \"always\" applies to all parts of the file regardless of markup/css."
+                    "default": "always",
+                    "description": "%emmetShowExpandedAbbreviation%"
                 },
                 "emmet.showAbbreviationSuggestions": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Applicable only when emmet.useNewEmmet is set to true.\nShows possible emmet abbreviations as suggestions. Not applicable in stylesheets or when emmet.showExpandedAbbreviation is set to \"never\"."
+                    "description": "%emmetShowAbbreviationSuggestions%"
                 },
                 "emmet.includeLanguages": {
                     "type": "object",
                     "default": {},
-                    "description": "Applicable only when emmet.useNewEmmet is set to true.\nEnable emmet abbreviations in languages that are not supported by default. Add a mapping here between the language and emmet supported language.\n Eg: {\"vue-html\": \"html\", \"javascript\": \"javascriptreact\"}"
+                    "description": "%emmetIncludeLanguages%"
                 },
                 "emmet.variables": {
                     "type": "object",
@@ -58,11 +62,120 @@
                         }
                     },
                     "default": {},
-                    "description": "Applicable only when emmet.useNewEmmet is set to true.\nVariables to be used in emmet snippets"
+                    "description": "%emmetVariables%"
+                },
+                "emmet.syntaxProfiles": {
+                    "type": "object",
+                    "default": {},
+                    "description": "%emmetSyntaxProfiles%"
+                },
+                "emmet.excludeLanguages": {
+                    "type": "array",
+                    "default": [
+                        "markdown"
+                    ],
+                    "description": "%emmetExclude%"
+                },
+                "emmet.extensionsPath": {
+                    "type": "string",
+                    "default": null,
+                    "description": "%emmetExtensionsPath%"
+                },
+                "emmet.triggerExpansionOnTab": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%emmetTriggerExpansionOnTab%"
+                },
+                "emmet.preferences": {
+                    "type": "object",
+                    "default": {},
+                    "description": "%emmetPreferences%",
+                    "properties": {
+                        "css.intUnit": {
+                            "type": "string",
+                            "default": "px",
+                            "description": "%emmetPreferencesIntUnit%"
+                        },
+                        "css.floatUnit": {
+                            "type": "string",
+                            "default": "em",
+                            "description": "%emmetPreferencesFloatUnit%"
+                        },
+                        "css.propertyEnd": {
+                            "type": "string",
+                            "default": ";",
+                            "description": "%emmetPreferencesCssAfter%"
+                        },
+                        "sass.propertyEnd": {
+                            "type": "string",
+                            "default": "",
+                            "description": "%emmetPreferencesSassAfter%"
+                        },
+                        "stylus.propertyEnd": {
+                            "type": "string",
+                            "default": "",
+                            "description": "%emmetPreferencesStylusAfter%"
+                        },
+                        "css.valueSeparator": {
+                            "type": "string",
+                            "default": ": ",
+                            "description": "%emmetPreferencesCssBetween%"
+                        },
+                        "sass.valueSeparator": {
+                            "type": "string",
+                            "default": ": ",
+                            "description": "%emmetPreferencesSassBetween%"
+                        },
+                        "stylus.valueSeparator": {
+                            "type": "string",
+                            "default": " ",
+                            "description": "%emmetPreferencesStylusBetween%"
+                        },
+                        "bem.elementSeparator": {
+                            "type": "string",
+                            "default": "__",
+                            "description": "%emmetPreferencesBemElementSeparator%"
+                        },
+                        "bem.modifierSeparator": {
+                            "type": "string",
+                            "default": "_",
+                            "description": "%emmetPreferencesBemModifierSeparator%"
+                        },
+                        "filter.commentBefore": {
+                            "type": "string",
+                            "default": "",
+                            "description": "%emmetPreferencesFilterCommentBefore%"
+                        },
+                        "filter.commentAfter": {
+                            "type": "string",
+                            "default": "\n<!-- /[#ID][.CLASS] -->",
+                            "description": "%emmetPreferencesFilterCommentAfter%"
+                        },
+                        "filter.commentTrigger": {
+                            "type": "array",
+                            "default": ["id", "class"],
+                            "description": "%emmetPreferencesFilterCommentTrigger%"
+                        }
+                    }
+                },
+                "emmet.showSuggestionsAsSnippets": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%emmetShowSuggestionsAsSnippets%"
                 }
             }
         },
         "commands": [
+            {
+                "command": "editor.emmet.action.wrapIndividualLinesWithAbbreviation",
+                "title": "%command.wrapIndividualLinesWithAbbreviation%",
+                "category": "Emmet"
+            },
+            {
+                "command": "editor.emmet.action.wrapWithAbbreviation",
+                "title": "%command.wrapWithAbbreviation%",
+                "category": "Emmet"
+            },
             {
                 "command": "editor.emmet.action.removeTag",
                 "title": "%command.removeTag%",
@@ -174,16 +287,14 @@
         "compile": "gulp compile-extension:emmet"
     },
     "devDependencies": {
-        "@types/node": "^7.0.4",
+        "@types/node": "7.0.43",
         "vscode": "1.0.1"
     },
     "dependencies": {
-        "@emmetio/expand-abbreviation": "^0.5.8",
-        "@emmetio/extract-abbreviation": "^0.1.1",
         "@emmetio/html-matcher": "^0.3.1",
-        "@emmetio/css-parser": "^0.3.0",
+        "@emmetio/css-parser": "ramya-rao-a/css-parser#vscode",
         "@emmetio/math-expression": "^0.1.1",
-        "vscode-emmet-helper": "^1.0.0",
+        "vscode-emmet-helper": "^1.1.14",
         "vscode-languageserver-types": "^3.0.3",
         "image-size": "^0.5.2",
         "vscode-nls": "2.0.2"

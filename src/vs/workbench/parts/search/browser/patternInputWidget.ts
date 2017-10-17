@@ -45,6 +45,9 @@ export class PatternInputWidget extends Widget {
 	private _onSubmit = this._register(new Emitter<boolean>());
 	public onSubmit: CommonEvent<boolean> = this._onSubmit.event;
 
+	private _onCancel = this._register(new Emitter<boolean>());
+	public onCancel: CommonEvent<boolean> = this._onCancel.event;
+
 	constructor(parent: HTMLElement, private contextViewProvider: IContextViewProvider, protected themeService: IThemeService, options: IOptions = Object.create(null)) {
 		super();
 		this.history = new HistoryNavigator<string>();
@@ -128,6 +131,13 @@ export class PatternInputWidget extends Widget {
 		this.history = new HistoryNavigator<string>(history);
 	}
 
+	public onSearchSubmit(): void {
+		const value = this.getValue();
+		if (value) {
+			this.history.addIfNotPresent(value);
+		}
+	}
+
 	public showNextTerm() {
 		let next = this.history.next();
 		if (next) {
@@ -181,6 +191,9 @@ export class PatternInputWidget extends Widget {
 			case KeyCode.Enter:
 				this._onSubmit.fire();
 				return;
+			case KeyCode.Escape:
+				this._onCancel.fire();
+				return;
 			default:
 				return;
 		}
@@ -228,6 +241,9 @@ export class ExcludePatternInputWidget extends PatternInputWidget {
 			title: nls.localize('useIgnoreFilesDescription', "Use Ignore Files"),
 			isChecked: false,
 			onChange: (viaKeyboard) => {
+				/* __GDPR__
+					"search.useIgnoreFiles.toggled" : {}
+				*/
 				this.telemetryService.publicLog('search.useIgnoreFiles.toggled');
 				this.onOptionChange(null);
 				if (!viaKeyboard) {
@@ -242,6 +258,9 @@ export class ExcludePatternInputWidget extends PatternInputWidget {
 			title: nls.localize('useExcludeSettingsDescription', "Use Exclude Settings"),
 			isChecked: false,
 			onChange: (viaKeyboard) => {
+				/* __GDPR__
+					"search.useExcludeSettings.toggled" : {}
+				*/
 				this.telemetryService.publicLog('search.useExcludeSettings.toggled');
 				this.onOptionChange(null);
 				if (!viaKeyboard) {

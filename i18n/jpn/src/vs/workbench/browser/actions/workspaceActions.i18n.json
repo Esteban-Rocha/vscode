@@ -6,13 +6,17 @@
 {
 	"openFolder": "フォルダーを開く...",
 	"openFileFolder": "開く...",
-	"cancel": "キャンセル",
-	"selectWorkspace": "ワークスペースのフォルダーを選択",
 	"addFolderToWorkspace": "ワークスペースにフォルダーを追加...",
+	"add": "追加(&&A)",
 	"addFolderToWorkspaceTitle": "ワークスペースにフォルダーを追加",
+	"newWorkspace": "新しいワークスペース...",
+	"select": "選択(&&S)",
+	"selectWorkspace": "ワークスペースのフォルダーを選択",
 	"removeFolderFromWorkspace": "ワークスペースからフォルダーを削除",
+	"saveWorkspaceAsAction": "名前を付けてワークスペースを保存...",
 	"save": "保存(&&S)",
 	"saveWorkspace": "ワークスペースを保存",
 	"openWorkspaceAction": "ワークスペースを開く...",
-	"newWorkspace": "新しいワークスペース..."
+	"openWorkspaceConfigFile": "ワークスペースの構成ファイルを開く",
+	"workspaceFolderPickerPlaceholder": "ワークスペース フォルダーを選択"
 }

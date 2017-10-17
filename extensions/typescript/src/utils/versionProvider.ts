@@ -8,16 +8,85 @@ const localize = nls.loadMessageBundle();
 import * as path from 'path';
 import * as fs from 'fs';
 
-import { workspace, window } from "vscode";
+import { workspace, window } from 'vscode';
 
-import { TypeScriptServiceConfiguration } from "./configuration";
+import { TypeScriptServiceConfiguration } from './configuration';
 import API from './api';
 
 
-export interface TypeScriptVersion {
-	label?: string;
-	version: API;
-	path: string;
+export class TypeScriptVersion {
+	constructor(
+		public readonly path: string,
+		private readonly _pathLabel?: string
+	) { }
+
+	public get tsServerPath(): string {
+		return path.join(this.path, 'tsserver.js');
+	}
+
+	public get pathLabel(): string {
+		return typeof this._pathLabel === 'undefined' ? this.path : this._pathLabel;
+	}
+
+	public get isValid(): boolean {
+		return this.version !== undefined;
+	}
+
+	public get version(): API | undefined {
+		const version = this.getTypeScriptVersion(this.tsServerPath);
+		if (version) {
+			return version;
+		}
+
+		// Allow TS developers to provide custom version
+		const tsdkVersion = workspace.getConfiguration().get<string | undefined>('typescript.tsdk_version', undefined);
+		if (tsdkVersion) {
+			return API.fromVersionString(tsdkVersion);
+		}
+
+		return undefined;
+	}
+
+	public get versionString(): string {
+		const version = this.version;
+		return version ? version.versionString : localize(
+			'couldNotLoadTsVersion', 'Could not load the TypeScript version at this path');
+	}
+
+	private getTypeScriptVersion(serverPath: string): API | undefined {
+		if (!fs.existsSync(serverPath)) {
+			return undefined;
+		}
+
+		const p = serverPath.split(path.sep);
+		if (p.length <= 2) {
+			return undefined;
+		}
+		const p2 = p.slice(0, -2);
+		const modulePath = p2.join(path.sep);
+		let fileName = path.join(modulePath, 'package.json');
+		if (!fs.existsSync(fileName)) {
+			// Special case for ts dev versions
+			if (path.basename(modulePath) === 'built') {
+				fileName = path.join(modulePath, '..', 'package.json');
+			}
+		}
+		if (!fs.existsSync(fileName)) {
+			return undefined;
+		}
+
+		const contents = fs.readFileSync(fileName).toString();
+		let desc: any = null;
+		try {
+			desc = JSON.parse(contents);
+		} catch (err) {
+			return undefined;
+		}
+		if (!desc || !desc.version) {
+			return undefined;
+		}
+		return desc.version ? API.fromVersionString(desc.version) : undefined;
+	}
 }
 
 
@@ -44,7 +113,7 @@ export class TypeScriptVersionProvider {
 		return undefined;
 	}
 
-	public get localTsdkVersion(): TypeScriptVersion | undefined {
+	public get localVersion(): TypeScriptVersion | undefined {
 		const tsdkVersions = this.localTsdkVersions;
 		if (tsdkVersions && tsdkVersions.length) {
 			return tsdkVersions[0];
@@ -58,14 +127,9 @@ export class TypeScriptVersionProvider {
 	}
 
 	public get localVersions(): TypeScriptVersion[] {
-		const versions: TypeScriptVersion[] = [];
-		const tsdkVersions = this.localTsdkVersions;
-		if (tsdkVersions && tsdkVersions.length) {
-			versions.push(tsdkVersions[0]);
-		}
-
+		const allVersions = this.localTsdkVersions.concat(this.localNodeModulesVersions);
 		const paths = new Set<string>();
-		return versions.concat(this.localNodeModulesVersions).filter(x => {
+		return allVersions.filter(x => {
 			if (paths.has(x.path)) {
 				return false;
 			}
@@ -76,8 +140,10 @@ export class TypeScriptVersionProvider {
 
 	public get bundledVersion(): TypeScriptVersion {
 		try {
-			const bundledVersion = this.loadFromPath(require.resolve('typescript/lib/tsserver.js'));
-			if (bundledVersion) {
+			const bundledVersion = new TypeScriptVersion(
+				path.dirname(require.resolve('typescript/lib/tsserver.js')),
+				'');
+			if (bundledVersion.isValid) {
 				return bundledVersion;
 			}
 		} catch (e) {
@@ -85,7 +151,7 @@ export class TypeScriptVersionProvider {
 		}
 		window.showErrorMessage(localize(
 			'noBundledServerFound',
-			'VSCode\'s tsserver was deleted by another application such as a misbehaving virus detection tool. Please reinstall VS Code.'));
+			'VS Code\'s tsserver was deleted by another application such as a misbehaving virus detection tool. Please reinstall VS Code.'));
 		throw new Error('Could not find bundled tsserver.js');
 	}
 
@@ -96,7 +162,7 @@ export class TypeScriptVersionProvider {
 
 	private loadVersionsFromSetting(tsdkPathSetting: string): TypeScriptVersion[] {
 		if (path.isAbsolute(tsdkPathSetting)) {
-			return this.getTypeScriptsFromPaths(tsdkPathSetting);
+			return [new TypeScriptVersion(tsdkPathSetting)];
 		}
 
 		for (const root of workspace.workspaceFolders || []) {
@@ -104,94 +170,33 @@ export class TypeScriptVersionProvider {
 			for (const rootPrefix of rootPrefixes) {
 				if (tsdkPathSetting.startsWith(rootPrefix)) {
 					const workspacePath = path.join(root.uri.fsPath, tsdkPathSetting.replace(rootPrefix, ''));
-					const version = this.loadFromPath(path.join(workspacePath, 'tsserver.js'));
-					if (version) {
-						version.label = tsdkPathSetting;
-						return [version];
-					}
-					return [];
+					return [new TypeScriptVersion(workspacePath, tsdkPathSetting)];
 				}
 			}
 		}
 
-		return this.getTypeScriptsFromPaths(tsdkPathSetting);
+		return this.loadTypeScriptVersionsFromPath(tsdkPathSetting);
 	}
 
 	private get localNodeModulesVersions(): TypeScriptVersion[] {
-		return this.getTypeScriptsFromPaths(path.join('node_modules', 'typescript', 'lib'));
+		return this.loadTypeScriptVersionsFromPath(path.join('node_modules', 'typescript', 'lib'))
+			.filter(x => x.isValid);
 	}
 
-	private getTypeScriptsFromPaths(typeScriptPath: string): TypeScriptVersion[] {
-		if (path.isAbsolute(typeScriptPath)) {
-			const version = this.loadFromPath(path.join(typeScriptPath, 'tsserver.js'));
-			return version ? [version] : [];
-		}
-
+	private loadTypeScriptVersionsFromPath(relativePath: string): TypeScriptVersion[] {
 		if (!workspace.workspaceFolders) {
 			return [];
 		}
 
 		const versions: TypeScriptVersion[] = [];
 		for (const root of workspace.workspaceFolders) {
-			const p = path.join(root.uri.fsPath, typeScriptPath, 'tsserver.js');
-
-			let label: string | undefined = undefined;
+			let label: string = relativePath;
 			if (workspace.workspaceFolders && workspace.workspaceFolders.length > 1) {
-				label = path.join(root.name, typeScriptPath);
+				label = path.join(root.name, relativePath);
 			}
 
-			const version = this.loadFromPath(p, label);
-			if (version) {
-				versions.push(version);
-			}
+			versions.push(new TypeScriptVersion(path.join(root.uri.fsPath, relativePath), label));
 		}
 		return versions;
-	}
-
-	public loadFromPath(tsServerPath: string, label?: string): TypeScriptVersion | undefined {
-		if (!fs.existsSync(tsServerPath)) {
-			return undefined;
-		}
-
-		const version = this.getTypeScriptVersion(tsServerPath);
-		if (version) {
-			return { path: tsServerPath, version, label };
-		}
-
-		// Allow TS developers to provide custom version
-		const tsdkVersion = workspace.getConfiguration().get<string | undefined>('typescript.tsdk_version', undefined);
-		if (tsdkVersion) {
-			return { path: tsServerPath, version: new API(tsdkVersion), label };
-		}
-
-		return undefined;
-	}
-
-	private getTypeScriptVersion(serverPath: string): API | undefined {
-		if (!fs.existsSync(serverPath)) {
-			return undefined;
-		}
-
-		let p = serverPath.split(path.sep);
-		if (p.length <= 2) {
-			return undefined;
-		}
-		let p2 = p.slice(0, -2);
-		let modulePath = p2.join(path.sep);
-		let fileName = path.join(modulePath, 'package.json');
-		if (!fs.existsSync(fileName)) {
-			return undefined;
-		}
-		let contents = fs.readFileSync(fileName).toString();
-		let desc: any = null;
-		try {
-			desc = JSON.parse(contents);
-		} catch (err) {
-			return undefined;
-		}
-		if (!desc || !desc.version) {
-			return undefined;
-		}
-		return desc.version ? new API(desc.version) : undefined;
 	}
 }

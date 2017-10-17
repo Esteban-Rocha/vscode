@@ -6,18 +6,17 @@
 {
 	"openFolder": "Klasör Aç...",
 	"openFileFolder": "Aç...",
-	"cancel": "İptal",
-	"newWorkspaceFormExisting": "Var Olandan Yeni Çalışma Alanı...",
-	"select": "&&Seç",
-	"selectWorkspace": "Çalışma Alanı İçin Klasörleri Seçin",
 	"addFolderToWorkspace": "Çalışma Alanına Klasör Ekle...",
 	"add": "&&Ekle",
 	"addFolderToWorkspaceTitle": "Çalışma Alanına Klasör Ekle",
+	"newWorkspace": "Yeni Çalışma Alanı...",
+	"select": "&&Seç",
+	"selectWorkspace": "Çalışma Alanı İçin Klasörleri Seçin",
 	"removeFolderFromWorkspace": "Çalışma Alanından Klasör Kaldır",
 	"saveWorkspaceAsAction": "Çalışma Alanını Farklı Kaydet...",
-	"saveEmptyWorkspaceNotSupported": "Bir klasör bulundurmayan bir pencere açıkken, bir çalışma alanını kaydetme desteklenmiyor.",
 	"save": "&&Kaydet",
 	"saveWorkspace": "Çalışma Alanını Kaydet",
 	"openWorkspaceAction": "Çalışma Alanı Aç...",
-	"newWorkspace": "Yeni Çalışma Alanı..."
+	"openWorkspaceConfigFile": "Çalışma Alanı Yapılandırma Dosyasını Aç",
+	"workspaceFolderPickerPlaceholder": "Çalışma alanı klasörü seçin"
 }

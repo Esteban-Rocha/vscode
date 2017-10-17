@@ -34,14 +34,14 @@ step "Install distro dependencies" {
 }
 
 step "Build minified" {
-	exec { & npm run gulp -- --max_old_space_size=4096 "vscode-win32-$global:arch-min" }
+	exec { & npm run gulp -- "vscode-win32-$global:arch-min" }
 }
 
 step "Run smoke test" {
-	exec { & Push-Location test\smoke }
-	exec { & npm install }
-	exec { & npm test -- --latest "$env:AGENT_BUILDDIRECTORY\VSCode-win32-$global:arch\Code - Insiders.exe" }
-	exec { & Pop-Location }
+	$Screenshots = "$env:AGENT_BUILDDIRECTORY\smoketest-screenshots"
+	Remove-Item -Recurse -Force -ErrorAction Ignore $Screenshots
+
+	exec { & npm run smoketest -- --build "$env:AGENT_BUILDDIRECTORY\VSCode-win32-$global:arch" --screenshots "$Screenshots" }
 }
 
 done
