@@ -15,10 +15,9 @@ import { ICommandService } from 'vs/platform/commands/common/commands';
 import { dispose } from 'vs/base/common/lifecycle';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
 import { IThemeService, ITheme } from 'vs/platform/theme/common/themeService';
-import { TextBadge, NumberBadge, IBadge, IconBadge, ProgressBadge } from 'vs/workbench/services/activity/common/activityBarService';
+import { TextBadge, NumberBadge, IBadge, IconBadge, ProgressBadge } from 'vs/workbench/services/activity/common/activity';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { contrastBorder } from 'vs/platform/theme/common/colorRegistry';
-import { ACTIVITY_BAR_BADGE_FOREGROUND, ACTIVITY_BAR_DRAG_AND_DROP_BACKGROUND, ACTIVITY_BAR_BADGE_BACKGROUND, ACTIVITY_BAR_FOREGROUND } from 'vs/workbench/common/theme';
 import { DelayedDragHandler } from 'vs/base/browser/dnd';
 import { IActivity } from 'vs/workbench/common/activity';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
@@ -31,24 +30,24 @@ export interface ICompositeActivity {
 
 export interface ICompositeBar {
 	/**
-	 * Unpins a viewlet from the activitybar.
+	 * Unpins a composite from the composite bar.
 	 */
-	unpin(viewletId: string): void;
+	unpin(compositeId: string): void;
 
 	/**
-	 * Pin a viewlet inside the activity bar.
+	 * Pin a composite inside the composite bar.
 	 */
-	pin(viewletId: string): void;
+	pin(compositeId: string): void;
 
 	/**
-	 * Find out if a viewlet is pinned in the activity bar.
+	 * Find out if a composite is pinned in the composite bar.
 	 */
-	isPinned(viewletId: string): boolean;
+	isPinned(compositeId: string): boolean;
 
 	/**
-	 * Reorder viewlet ordering by moving a viewlet to the location of another viewlet.
+	 * Reorder composite ordering by moving a composite to the location of another composite.
 	 */
-	move(viewletId: string, toViewletId: string): void;
+	move(compositeId: string, tocompositeId: string): void;
 }
 
 export class ActivityAction extends Action {
@@ -91,17 +90,30 @@ export class ActivityAction extends Action {
 	}
 }
 
+export interface ICompositeBarColors {
+	backgroundColor: string;
+	badgeBackground: string;
+	badgeForeground: string;
+	dragAndDropBackground: string;
+}
+
+export interface IActivityActionItemOptions extends IBaseActionItemOptions {
+	icon?: boolean;
+	colors: ICompositeBarColors;
+}
+
 export class ActivityActionItem extends BaseActionItem {
 	protected $container: Builder;
 	protected $label: Builder;
 	protected $badge: Builder;
+	protected options: IActivityActionItemOptions;
 
 	private $badgeContent: Builder;
 	private mouseUpTimeout: number;
 
 	constructor(
 		action: ActivityAction,
-		options: IBaseActionItemOptions,
+		options: IActivityActionItemOptions,
 		@IThemeService protected themeService: IThemeService
 	) {
 		super(null, action, options);
@@ -118,16 +130,16 @@ export class ActivityActionItem extends BaseActionItem {
 		const theme = this.themeService.getTheme();
 
 		// Label
-		if (this.$label) {
-			const background = theme.getColor(ACTIVITY_BAR_FOREGROUND);
+		if (this.$label && this.options.icon) {
+			const background = theme.getColor(this.options.colors.backgroundColor);
 
 			this.$label.style('background-color', background ? background.toString() : null);
 		}
 
 		// Badge
 		if (this.$badgeContent) {
-			const badgeForeground = theme.getColor(ACTIVITY_BAR_BADGE_FOREGROUND);
-			const badgeBackground = theme.getColor(ACTIVITY_BAR_BADGE_BACKGROUND);
+			const badgeForeground = theme.getColor(this.options.colors.badgeForeground);
+			const badgeBackground = theme.getColor(this.options.colors.badgeBackground);
 			const contrastBorderColor = theme.getColor(contrastBorder);
 
 			this.$badgeContent.style('color', badgeForeground ? badgeForeground.toString() : null);
@@ -168,6 +180,9 @@ export class ActivityActionItem extends BaseActionItem {
 		this.$label = $('a.action-label').appendTo(this.builder);
 		if (this.activity.cssClass) {
 			this.$label.addClass(this.activity.cssClass);
+		}
+		if (!this.options.icon) {
+			this.$label.text(this.getAction().label);
 		}
 
 		this.$badge = this.builder.clone().div({ 'class': 'badge' }, (badge: Builder) => {
@@ -262,7 +277,7 @@ export class CompositeOverflowActivityAction extends ActivityAction {
 		private showMenu: () => void
 	) {
 		super({
-			id: 'activitybar.additionalComposites.action',
+			id: 'additionalComposites.action',
 			name: nls.localize('additionalViews', "Additional Views"),
 			cssClass: 'toggle-more'
 		});
@@ -286,11 +301,12 @@ export class CompositeOverflowActivityActionItem extends ActivityActionItem {
 		private getActiveCompositeId: () => string,
 		private getBadge: (compositeId: string) => IBadge,
 		private getCompositeOpenAction: (compositeId: string) => Action,
+		colors: ICompositeBarColors,
 		@IInstantiationService private instantiationService: IInstantiationService,
 		@IContextMenuService private contextMenuService: IContextMenuService,
 		@IThemeService themeService: IThemeService
 	) {
-		super(action, null, themeService);
+		super(action, { icon: true, colors }, themeService);
 
 		this.cssClass = action.class;
 		this.name = action.label;
@@ -364,13 +380,15 @@ export class CompositeActionItem extends ActivityActionItem {
 	constructor(
 		private compositeActivityAction: ActivityAction,
 		private toggleCompositePinnedAction: Action,
+		colors: ICompositeBarColors,
+		icon: boolean,
 		private compositeBar: ICompositeBar,
 		@IContextMenuService private contextMenuService: IContextMenuService,
 		@IKeybindingService private keybindingService: IKeybindingService,
 		@IInstantiationService instantiationService: IInstantiationService,
 		@IThemeService themeService: IThemeService
 	) {
-		super(compositeActivityAction, { draggable: true }, themeService);
+		super(compositeActivityAction, { draggable: true, colors, icon }, themeService);
 
 		this.cssClass = compositeActivityAction.class;
 
@@ -486,7 +504,7 @@ export class CompositeActionItem extends ActivityActionItem {
 
 	private updateFromDragging(element: HTMLElement, isDragging: boolean): void {
 		const theme = this.themeService.getTheme();
-		const dragBackground = theme.getColor(ACTIVITY_BAR_DRAG_AND_DROP_BACKGROUND);
+		const dragBackground = theme.getColor(this.options.colors.dragAndDropBackground);
 
 		element.style.backgroundColor = isDragging && dragBackground ? dragBackground.toString() : null;
 	}
@@ -512,10 +530,10 @@ export class CompositeActionItem extends ActivityActionItem {
 
 		const isPinned = this.compositeBar.isPinned(this.activity.id);
 		if (isPinned) {
-			this.toggleCompositePinnedAction.label = nls.localize('removeFromActivityBar', "Hide from Activity Bar");
+			this.toggleCompositePinnedAction.label = nls.localize('hide', "Hide");
 			this.toggleCompositePinnedAction.checked = false;
 		} else {
-			this.toggleCompositePinnedAction.label = nls.localize('keepInActivityBar', "Keep in Activity Bar");
+			this.toggleCompositePinnedAction.label = nls.localize('keep', "Keep");
 		}
 
 		this.contextMenuService.showContextMenu({
@@ -569,7 +587,7 @@ export class ToggleCompositePinnedAction extends Action {
 		private activity: IActivity,
 		private compositeBar: ICompositeBar
 	) {
-		super('activitybar.show.toggleViewletPinned', activity ? activity.name : nls.localize('toggle', "Toggle View Pinned"));
+		super('show.toggleCompositePinned', activity ? activity.name : nls.localize('toggle', "Toggle View Pinned"));
 
 		this.checked = this.activity && this.compositeBar.isPinned(this.activity.id);
 	}

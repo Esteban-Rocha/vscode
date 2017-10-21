@@ -7,6 +7,7 @@
 
 import 'vs/css!./media/activityaction';
 import DOM = require('vs/base/browser/dom');
+import { EventType as TouchEventType } from 'vs/base/browser/touch';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { Action } from 'vs/base/common/actions';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
@@ -20,7 +21,7 @@ import { activeContrastBorder, focusBorder } from 'vs/platform/theme/common/colo
 import { StandardMouseEvent } from 'vs/base/browser/mouseEvent';
 import { KeyCode } from 'vs/base/common/keyCodes';
 import { StandardKeyboardEvent } from 'vs/base/browser/keyboardEvent';
-import { ActivityAction, ActivityActionItem } from 'vs/workbench/browser/parts/compositebar/compositeBarActions';
+import { ActivityAction, ActivityActionItem, ICompositeBarColors } from 'vs/workbench/browser/parts/compositebar/compositeBarActions';
 
 export class ViewletActivityAction extends ActivityAction {
 
@@ -94,10 +95,11 @@ export class GlobalActivityActionItem extends ActivityActionItem {
 
 	constructor(
 		action: GlobalActivityAction,
+		colors: ICompositeBarColors,
 		@IThemeService themeService: IThemeService,
 		@IContextMenuService protected contextMenuService: IContextMenuService
 	) {
-		super(action, { draggable: false }, themeService);
+		super(action, { draggable: false, colors, icon: true }, themeService);
 	}
 
 	public render(container: HTMLElement): void {
@@ -106,30 +108,27 @@ export class GlobalActivityActionItem extends ActivityActionItem {
 		// Context menus are triggered on mouse down so that an item can be picked
 		// and executed with releasing the mouse over it
 		this.$container.on(DOM.EventType.MOUSE_DOWN, (e: MouseEvent) => {
-			this.onClick(e);
+			DOM.EventHelper.stop(e, true);
+
+			const event = new StandardMouseEvent(e);
+			this.showContextMenu({ x: event.posx, y: event.posy });
 		});
 
-		// Extra listener for keyboard interaction
 		this.$container.on(DOM.EventType.KEY_UP, (e: KeyboardEvent) => {
 			let event = new StandardKeyboardEvent(e);
 			if (event.equals(KeyCode.Enter) || event.equals(KeyCode.Space)) {
-				this.onClick(e);
+				DOM.EventHelper.stop(e, true);
+
+				this.showContextMenu(this.$container.getHTMLElement());
 			}
 		});
-	}
 
-	public onClick(event?: MouseEvent | KeyboardEvent): void {
-		DOM.EventHelper.stop(event, true);
+		this.$container.on(TouchEventType.Tap, (e: MouseEvent) => {
+			DOM.EventHelper.stop(e, true);
 
-		let location: HTMLElement | { x: number, y: number };
-		if (event instanceof MouseEvent) {
-			const mouseEvent = new StandardMouseEvent(event);
-			location = { x: mouseEvent.posx, y: mouseEvent.posy };
-		} else {
-			location = this.$container.getHTMLElement();
-		}
-
-		this.showContextMenu(location);
+			const event = new StandardMouseEvent(e);
+			this.showContextMenu({ x: event.posx, y: event.posy });
+		});
 	}
 
 	private showContextMenu(location: HTMLElement | { x: number, y: number }): void {
