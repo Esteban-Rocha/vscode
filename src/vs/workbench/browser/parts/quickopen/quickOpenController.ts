@@ -14,6 +14,7 @@ import strings = require('vs/base/common/strings');
 import filters = require('vs/base/common/filters');
 import DOM = require('vs/base/browser/dom');
 import URI from 'vs/base/common/uri';
+import * as resources from 'vs/base/common/resources';
 import { defaultGenerator } from 'vs/base/common/idGenerator';
 import types = require('vs/base/common/types');
 import { Action, IAction } from 'vs/base/common/actions';
@@ -36,7 +37,7 @@ import { Component } from 'vs/workbench/common/component';
 import Event, { Emitter } from 'vs/base/common/event';
 import { IPartService } from 'vs/workbench/services/part/common/partService';
 import { KeyMod } from 'vs/base/common/keyCodes';
-import { QuickOpenHandler, QuickOpenHandlerDescriptor, IQuickOpenRegistry, Extensions, EditorQuickOpenEntry, IWorkbenchQuickOpenConfiguration } from 'vs/workbench/browser/quickopen';
+import { QuickOpenHandler, QuickOpenHandlerDescriptor, IQuickOpenRegistry, Extensions, EditorQuickOpenEntry, CLOSE_ON_FOCUS_LOST_CONFIG } from 'vs/workbench/browser/quickopen';
 import errors = require('vs/base/common/errors');
 import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { IPickOpenEntry, IFilePickOpenEntry, IInputOptions, IQuickOpenService, IPickOptions, IShowOptions, IPickOpenItem } from 'vs/platform/quickOpen/common/quickOpen';
@@ -131,22 +132,22 @@ export class QuickOpenController extends Component implements IQuickOpenService 
 		this._onShow = new Emitter<void>();
 		this._onHide = new Emitter<void>();
 
-		this.updateConfiguration(<IWorkbenchQuickOpenConfiguration>this.configurationService.getConfiguration());
+		this.updateConfiguration();
 
 		this.registerListeners();
 	}
 
 	private registerListeners(): void {
-		this.toUnbind.push(this.configurationService.onDidChangeConfiguration(e => this.updateConfiguration(this.configurationService.getConfiguration<IWorkbenchQuickOpenConfiguration>())));
+		this.toUnbind.push(this.configurationService.onDidChangeConfiguration(e => this.updateConfiguration()));
 		this.toUnbind.push(this.partService.onTitleBarVisibilityChange(() => this.positionQuickOpenWidget()));
 		this.toUnbind.push(browser.onDidChangeZoomLevel(() => this.positionQuickOpenWidget()));
 	}
 
-	private updateConfiguration(settings: IWorkbenchQuickOpenConfiguration): void {
+	private updateConfiguration(): void {
 		if (this.environmentService.args['sticky-quickopen']) {
 			this.closeOnFocusLost = false;
 		} else {
-			this.closeOnFocusLost = settings.workbench && settings.workbench.quickOpen && settings.workbench.quickOpen.closeOnFocusLost;
+			this.closeOnFocusLost = this.configurationService.getValue(CLOSE_ON_FOCUS_LOST_CONFIG);
 		}
 	}
 
@@ -1276,7 +1277,7 @@ export class EditorHistoryEntry extends EditorQuickOpenEntry {
 			const resourceInput = input as IResourceInput;
 			this.resource = resourceInput.resource;
 			this.label = paths.basename(resourceInput.resource.fsPath);
-			this.description = labels.getPathLabel(paths.dirname(this.resource.fsPath), contextService, environmentService);
+			this.description = labels.getPathLabel(resources.dirname(this.resource), contextService, environmentService);
 			this.dirty = this.resource && this.textFileService.isDirty(this.resource);
 
 			if (this.dirty && this.textFileService.getAutoSaveMode() === AutoSaveMode.AFTER_SHORT_DELAY) {

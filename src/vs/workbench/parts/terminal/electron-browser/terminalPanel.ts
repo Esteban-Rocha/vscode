@@ -74,7 +74,11 @@ export class TerminalPanel extends Panel {
 		this._terminalService.setContainers(this.getContainer().getHTMLElement(), this._terminalContainer);
 
 		this._register(this.themeService.onThemeChange(theme => this._updateTheme(theme)));
-		this._register(this._configurationService.onDidChangeConfiguration(() => this._updateFont()));
+		this._register(this._configurationService.onDidChangeConfiguration(e => {
+			if (e.affectsConfiguration('terminal.integrated') || e.affectsConfiguration('editor.fontFamily')) {
+				this._updateFont();
+			}
+		}));
 		this._updateFont();
 		this._updateTheme();
 
@@ -99,11 +103,16 @@ export class TerminalPanel extends Panel {
 				this._updateTheme();
 			} else {
 				return super.setVisible(visible).then(() => {
-					const instance = this._terminalService.createInstance();
-					if (instance) {
-						this._updateFont();
-						this._updateTheme();
-					}
+					// Allow time for the panel to display if it is being shown
+					// for the first time. If there is not wait here the initial
+					// dimensions of the pty could be wrong.
+					setTimeout(() => {
+						const instance = this._terminalService.createInstance();
+						if (instance) {
+							this._updateFont();
+							this._updateTheme();
+						}
+					}, 0);
 					return TPromise.as(void 0);
 				});
 			}

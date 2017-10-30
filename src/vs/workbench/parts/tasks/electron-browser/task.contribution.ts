@@ -1368,9 +1368,18 @@ class TaskService extends EventEmitter implements ITaskService {
 						resolve(result);
 					}
 				};
-				let error = () => {
-					if (--counter === 0) {
-						resolve(result);
+				let error = (error: any) => {
+					try {
+						if (Types.isString(error.message)) {
+							this._outputChannel.append('Error: ');
+							this._outputChannel.append(error.message);
+							this._outputChannel.append('\n');
+							this._outputChannel.show(true);
+						}
+					} finally {
+						if (--counter === 0) {
+							resolve(result);
+						}
 					}
 				};
 				if (this.schemaVersion === JsonSchemaVersion.V2_0_0 && this._providers.size > 0) {
@@ -1411,7 +1420,9 @@ class TaskService extends EventEmitter implements ITaskService {
 						let customTasksToDelete: Task[] = [];
 						if (configurations || legacyTaskConfigurations) {
 							let unUsedConfigurations: Set<string> = new Set<string>();
-							Object.keys(configurations.byIdentifier).forEach(key => unUsedConfigurations.add(key));
+							if (configurations) {
+								Object.keys(configurations.byIdentifier).forEach(key => unUsedConfigurations.add(key));
+							}
 							for (let task of contributed) {
 								if (!ContributedTask.is(task)) {
 									continue;

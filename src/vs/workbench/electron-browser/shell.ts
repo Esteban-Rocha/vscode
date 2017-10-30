@@ -91,6 +91,8 @@ import { foreground, selectionBackground, focusBorder, scrollbarShadow, scrollba
 import { TextMateService } from 'vs/workbench/services/textMate/electron-browser/TMSyntax';
 import { ITextMateService } from 'vs/workbench/services/textMate/electron-browser/textMateService';
 import { IBroadcastService, BroadcastService } from 'vs/platform/broadcast/electron-browser/broadcastService';
+import { HashService } from 'vs/workbench/services/hash/node/hashService';
+import { IHashService } from 'vs/workbench/services/hash/common/hashService';
 
 /**
  * Services that we require for the Shell
@@ -293,6 +295,9 @@ export class WorkbenchShell {
 		restoreFontInfo(this.storageService);
 		readFontInfo(BareFontInfo.createFromRawSettings(this.configurationService.getConfiguration('editor'), browser.getZoomLevel()));
 
+		// Hash
+		serviceCollection.set(IHashService, new SyncDescriptor(HashService));
+
 		// Experiments
 		this.experimentService = instantiationService.createInstance(ExperimentService);
 		serviceCollection.set(IExperimentService, this.experimentService);
@@ -337,7 +342,7 @@ export class WorkbenchShell {
 		disposables.push(configurationTelemetry(this.telemetryService, this.configurationService));
 
 		let crashReporterService = NullCrashReporterService;
-		if (product.crashReporter && product.hockeyApp) {
+		if (!this.environmentService.disableCrashReporter && product.crashReporter && product.hockeyApp) {
 			crashReporterService = instantiationService.createInstance(CrashReporterService);
 		}
 		serviceCollection.set(ICrashReporterService, crashReporterService);

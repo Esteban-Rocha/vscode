@@ -1629,6 +1629,24 @@ suite('Editor Controller - Regression tests', () => {
 		});
 	});
 
+	test('issue #33788: Wrong cursor position when double click to select a word', () => {
+		let model = Model.createFromString(
+			[
+				'Just some text'
+			].join('\n')
+		);
+
+		withMockCodeEditor(null, { model: model }, (editor, cursor) => {
+			CoreNavigationCommands.WordSelect.runCoreEditorCommand(cursor, { position: new Position(1, 8) });
+			assert.deepEqual(cursor.getSelection(), new Selection(1, 6, 1, 10));
+
+			CoreNavigationCommands.WordSelectDrag.runCoreEditorCommand(cursor, { position: new Position(1, 8) });
+			assert.deepEqual(cursor.getSelection(), new Selection(1, 6, 1, 10));
+		});
+
+		model.dispose();
+	});
+
 	test('issue #9675: Undo/Redo adds a stop in between CHN Characters', () => {
 		usingCursor({
 			text: [
@@ -1721,6 +1739,49 @@ suite('Editor Controller - Regression tests', () => {
 			].join('\n'));
 
 			assertCursor(cursor, new Selection(1, 1, 1, 1));
+		});
+	});
+
+	test('issue #36740: wordwrap creates an extra step / character at the wrapping point', () => {
+		// a single model line => 4 view lines
+		withMockCodeEditor([
+			[
+				'Lorem ipsum ',
+				'dolor sit amet ',
+				'consectetur ',
+				'adipiscing elit',
+			].join('')
+		], { wordWrap: 'wordWrapColumn', wordWrapColumn: 16 }, (editor, cursor) => {
+			cursor.setSelections('test', [new Selection(1, 7, 1, 7)]);
+
+			moveRight(cursor);
+			assertCursor(cursor, new Selection(1, 8, 1, 8));
+
+			moveRight(cursor);
+			assertCursor(cursor, new Selection(1, 9, 1, 9));
+
+			moveRight(cursor);
+			assertCursor(cursor, new Selection(1, 10, 1, 10));
+
+			moveRight(cursor);
+			assertCursor(cursor, new Selection(1, 11, 1, 11));
+
+			moveRight(cursor);
+			assertCursor(cursor, new Selection(1, 12, 1, 12));
+
+			moveRight(cursor);
+			assertCursor(cursor, new Selection(1, 13, 1, 13));
+
+			// moving to view line 2
+			moveRight(cursor);
+			assertCursor(cursor, new Selection(1, 14, 1, 14));
+
+			moveLeft(cursor);
+			assertCursor(cursor, new Selection(1, 13, 1, 13));
+
+			// moving back to view line 1
+			moveLeft(cursor);
+			assertCursor(cursor, new Selection(1, 12, 1, 12));
 		});
 	});
 });
@@ -4019,6 +4080,34 @@ suite('Undo stops', () => {
 			cursorCommand(cursor, H.Undo, {});
 			assert.equal(model.getLineContent(2), 'Another line');
 			assertCursor(cursor, new Selection(2, 9, 2, 9));
+		});
+	});
+
+	test('inserts undo stop when typing space', () => {
+		let model = Model.createFromString(
+			[
+				'A  line',
+				'Another line',
+			].join('\n')
+		);
+
+		withMockCodeEditor(null, { model: model }, (editor, cursor) => {
+			cursor.setSelections('test', [new Selection(1, 3, 1, 3)]);
+			cursorCommand(cursor, H.Type, { text: 'first and interesting' }, 'keyboard');
+			assert.equal(model.getLineContent(1), 'A first and interesting line');
+			assertCursor(cursor, new Selection(1, 24, 1, 24));
+
+			cursorCommand(cursor, H.Undo, {});
+			assert.equal(model.getLineContent(1), 'A first and line');
+			assertCursor(cursor, new Selection(1, 12, 1, 12));
+
+			cursorCommand(cursor, H.Undo, {});
+			assert.equal(model.getLineContent(1), 'A first line');
+			assertCursor(cursor, new Selection(1, 8, 1, 8));
+
+			cursorCommand(cursor, H.Undo, {});
+			assert.equal(model.getLineContent(1), 'A  line');
+			assertCursor(cursor, new Selection(1, 3, 1, 3));
 		});
 	});
 

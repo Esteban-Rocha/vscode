@@ -209,8 +209,10 @@ export class DebugEditorModelManager implements IWorkbenchContribution {
 		const data: IRawBreakpoint[] = [];
 
 		const lineToBreakpointDataMap = new Map<number, IBreakpoint>();
-		this.debugService.getModel().getBreakpoints().filter(bp => bp.uri.toString() === modelUrlStr).forEach(bp => {
-			lineToBreakpointDataMap.set(bp.lineNumber, bp);
+		this.debugService.getModel().getBreakpoints().forEach(bp => {
+			if (bp.uri.toString() === modelUrlStr) {
+				lineToBreakpointDataMap.set(bp.lineNumber, bp);
+			}
 		});
 
 		const modelUri = modelData.model.uri;
@@ -221,13 +223,15 @@ export class DebugEditorModelManager implements IWorkbenchContribution {
 			if (decorationRange.endColumn - decorationRange.startColumn > 0) {
 				const breakpoint = lineToBreakpointDataMap.get(lineNumber);
 				// since we know it is collapsed, it cannot grow to multiple lines
-				data.push({
-					lineNumber: decorationRange.startLineNumber,
-					enabled: breakpoint.enabled,
-					condition: breakpoint.condition,
-					hitCondition: breakpoint.hitCondition,
-					column: breakpoint.column ? decorationRange.startColumn : undefined
-				});
+				if (breakpoint) {
+					data.push({
+						lineNumber: decorationRange.startLineNumber,
+						enabled: breakpoint.enabled,
+						condition: breakpoint.condition,
+						hitCondition: breakpoint.hitCondition,
+						column: breakpoint.column ? decorationRange.startColumn : undefined
+					});
+				}
 			}
 		}
 		modelData.dirty = this.debugService.state !== State.Inactive;

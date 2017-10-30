@@ -281,7 +281,7 @@ export class CompositeBar implements ICompositeBar {
 		}
 
 		// Add overflow action as needed
-		if (visibleCompositesChange && overflows) {
+		if ((visibleCompositesChange && overflows) || this.compositeSwitcherBar.length() === 0) {
 			this.compositeOverflowAction = this.instantiationService.createInstance(CompositeOverflowActivityAction, () => this.compositeOverflowActionItem.showMenu());
 			this.compositeOverflowActionItem = this.instantiationService.createInstance(
 				CompositeOverflowActivityActionItem,
@@ -403,6 +403,10 @@ export class CompositeBar implements ICompositeBar {
 	}
 
 	public move(compositeId: string, toCompositeId: string): void {
+		// Make sure both composites are known to this composite bar
+		if (this.options.composites.filter(c => c.id === compositeId || c.id === toCompositeId).length !== 2) {
+			return;
+		}
 		// Make sure a moved composite gets pinned
 		if (!this.isPinned(compositeId)) {
 			this.pin(compositeId, false /* defer update, we take care of it */);

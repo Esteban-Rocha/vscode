@@ -397,6 +397,18 @@ export function createApiFactory(
 			get workspaceFolders() {
 				return extHostWorkspace.getWorkspaceFolders();
 			},
+			get name() {
+				return extHostWorkspace.workspace ? extHostWorkspace.workspace.name : undefined;
+			},
+			set name(value) {
+				throw errors.readonly();
+			},
+			addWorkspaceFolder(uri, name) {
+				return extHostWorkspace.addWorkspaceFolder(extension.displayName || extension.name, uri, name);
+			},
+			removeWorkspaceFolder(folder) {
+				return extHostWorkspace.removeWorkspaceFolder(extension.displayName || extension.name, folder);
+			},
 			onDidChangeWorkspaceFolders: function (listener, thisArgs?, disposables?) {
 				return extHostWorkspace.onDidChangeWorkspace(listener, thisArgs, disposables);
 			},
@@ -460,8 +472,9 @@ export function createApiFactory(
 			onDidChangeConfiguration: (listener: (_: any) => any, thisArgs?: any, disposables?: extHostTypes.Disposable[]) => {
 				return extHostConfiguration.onDidChangeConfiguration(listener, thisArgs, disposables);
 			},
-			getConfiguration: (section?: string, resource?: vscode.Uri): vscode.WorkspaceConfiguration => {
-				return extHostConfiguration.getConfiguration(section, resource);
+			getConfiguration(section?: string, resource?: vscode.Uri): vscode.WorkspaceConfiguration {
+				resource = arguments.length === 1 ? void 0 : resource;
+				return extHostConfiguration.getConfiguration(section, resource, extension.id);
 			},
 			registerTextDocumentContentProvider(scheme: string, provider: vscode.TextDocumentContentProvider) {
 				return extHostDocumentContentProviders.registerTextDocumentContentProvider(scheme, provider);
@@ -489,6 +502,9 @@ export function createApiFactory(
 			get activeDebugSession() {
 				return extHostDebugService.activeDebugSession;
 			},
+			get console() {
+				return extHostDebugService.debugConsole;
+			},
 			startDebugging(folder: vscode.WorkspaceFolder | undefined, nameOrConfig: string | vscode.DebugConfiguration) {
 				return extHostDebugService.startDebugging(folder, nameOrConfig);
 			},
@@ -506,7 +522,7 @@ export function createApiFactory(
 			},
 			registerDebugConfigurationProvider(debugType: string, provider: vscode.DebugConfigurationProvider) {
 				return extHostDebugService.registerDebugConfigurationProvider(debugType, provider);
-			},
+			}
 		};
 
 		// namespace: credentials

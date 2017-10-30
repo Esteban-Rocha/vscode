@@ -54,11 +54,12 @@ import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { isLinux } from 'vs/base/common/platform';
 import { generateUuid } from 'vs/base/common/uuid';
 import { TestThemeService } from 'vs/platform/theme/test/common/testThemeService';
-import { IWorkspaceIdentifier, ISingleFolderWorkspaceIdentifier, isSingleFolderWorkspaceIdentifier } from 'vs/platform/workspaces/common/workspaces';
+import { IWorkspaceIdentifier, ISingleFolderWorkspaceIdentifier, isSingleFolderWorkspaceIdentifier, IWorkspaceFolderCreationData } from 'vs/platform/workspaces/common/workspaces';
 import { IRecentlyOpened } from 'vs/platform/history/common/history';
 import { ITextResourceConfigurationService } from 'vs/editor/common/services/resourceConfiguration';
 import { IPosition } from 'vs/editor/common/core/position';
 import { ICommandAction } from 'vs/platform/actions/common/actions';
+import { IHashService } from 'vs/workbench/services/hash/common/hashService';
 
 export function createFileInput(instantiationService: IInstantiationService, resource: URI): FileEditorInput {
 	return instantiationService.createInstance(FileEditorInput, resource, void 0);
@@ -115,14 +116,6 @@ export class TestContextService implements IWorkspaceContextService {
 
 	public getWorkspace(): IWorkbenchWorkspace {
 		return this.workspace;
-	}
-
-	public addFolders(foldersToAdd: URI[]): TPromise<void> {
-		return TPromise.as(void 0);
-	}
-
-	public removeFolders(foldersToRemove: URI[]): TPromise<void> {
-		return TPromise.as(void 0);
 	}
 
 	public getWorkspaceFolder(resource: URI): IWorkspaceFolder {
@@ -233,8 +226,8 @@ export class TestTextFileService extends TextFileService {
 		return this.confirmResult;
 	}
 
-	public onConfigurationChange(configuration: any): void {
-		super.onConfigurationChange(configuration);
+	public onFilesConfigurationChange(configuration: any): void {
+		super.onFilesConfigurationChange(configuration);
 	}
 
 	protected cleanupBackupsBeforeShutdown(): TPromise<void> {
@@ -267,6 +260,7 @@ export function workbenchInstantiationService(): IInstantiationService {
 	instantiationService.stub(ITextModelService, <ITextModelService>instantiationService.createInstance(TextModelResolverService));
 	instantiationService.stub(IEnvironmentService, TestEnvironmentService);
 	instantiationService.stub(IThemeService, new TestThemeService());
+	instantiationService.stub(IHashService, new TestHashService());
 	instantiationService.stub(IChoiceService, {
 		choose: (severity, message, options, cancelId): TPromise<number> => {
 			return TPromise.as(cancelId);
@@ -305,8 +299,12 @@ export class TestHistoryService implements IHistoryService {
 		return [];
 	}
 
-	public getLastActiveWorkspaceRoot(): URI {
+	public getLastActiveWorkspaceRoot(schemeFilter?: string): URI {
 		return this.root;
+	}
+
+	public getLastActiveFile(): URI {
+		return void 0;
 	}
 }
 
@@ -420,6 +418,10 @@ export class TestPartService implements IPartService {
 		return 0;
 	}
 
+	public getPanelPosition() {
+		return 0;
+	}
+
 	public addClass(clazz: string): void { }
 	public removeClass(clazz: string): void { }
 	public getWorkbenchElementId(): string { return ''; }
@@ -512,7 +514,7 @@ export class TestEditorGroupService implements IEditorGroupService {
 		return this._onEditorOpenFail.event;
 	}
 
-	public get onEditorsMoved(): Event<void> {
+	public get onEditorGroupMoved(): Event<void> {
 		return this._onEditorsMoved.event;
 	}
 
@@ -906,6 +908,10 @@ export class TestWindowService implements IWindowService {
 		return TPromise.as(void 0);
 	}
 
+	pickWorkspaceAndOpen(options: INativeOpenDialogOptions): TPromise<void> {
+		return TPromise.as(void 0);
+	}
+
 	reloadWindow(): TPromise<void> {
 		return TPromise.as(void 0);
 	}
@@ -922,11 +928,7 @@ export class TestWindowService implements IWindowService {
 		return TPromise.as(void 0);
 	}
 
-	openWorkspace(): TPromise<void> {
-		return TPromise.as(void 0);
-	}
-
-	createAndEnterWorkspace(folderPaths?: string[], path?: string): TPromise<IEnterWorkspaceResult> {
+	createAndEnterWorkspace(folders?: IWorkspaceFolderCreationData[], path?: string): TPromise<IEnterWorkspaceResult> {
 		return TPromise.as(void 0);
 	}
 
@@ -1058,6 +1060,10 @@ export class TestWindowsService implements IWindowsService {
 		return TPromise.as(void 0);
 	}
 
+	pickWorkspaceAndOpen(options: INativeOpenDialogOptions): TPromise<void> {
+		return TPromise.as(void 0);
+	}
+
 	reloadWindow(windowId: number): TPromise<void> {
 		return TPromise.as(void 0);
 	}
@@ -1074,11 +1080,7 @@ export class TestWindowsService implements IWindowsService {
 		return TPromise.as(void 0);
 	}
 
-	openWorkspace(windowId: number): TPromise<void> {
-		return TPromise.as(void 0);
-	}
-
-	createAndEnterWorkspace(windowId: number, folderPaths?: string[], path?: string): TPromise<IEnterWorkspaceResult> {
+	createAndEnterWorkspace(windowId: number, folders?: IWorkspaceFolderCreationData[], path?: string): TPromise<IEnterWorkspaceResult> {
 		return TPromise.as(void 0);
 	}
 
@@ -1235,6 +1237,14 @@ export class TestTextResourceConfigurationService implements ITextResourceConfig
 	public getConfiguration(resource: any, position?: any, section?: any): any;
 	public getConfiguration(resource: any, position?: any, section?: any): any {
 		return this.configurationService.getConfiguration(section, { resource });
+	}
+}
+
+export class TestHashService implements IHashService {
+	_serviceBrand: any;
+
+	createSHA1(content: string): string {
+		return content;
 	}
 }
 

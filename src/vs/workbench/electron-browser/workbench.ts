@@ -15,7 +15,6 @@ import DOM = require('vs/base/browser/dom');
 import { Builder, $ } from 'vs/base/browser/builder';
 import { Delayer, RunOnceScheduler } from 'vs/base/common/async';
 import * as browser from 'vs/base/browser/browser';
-import assert = require('vs/base/common/assert');
 import { StopWatch } from 'vs/base/common/stopwatch';
 import { startTimer } from 'vs/base/node/startupTimers';
 import errors = require('vs/base/common/errors');
@@ -102,6 +101,7 @@ import URI from 'vs/base/common/uri';
 export const MessagesVisibleContext = new RawContextKey<boolean>('globalMessageVisible', false);
 export const EditorsVisibleContext = new RawContextKey<boolean>('editorIsOpen', false);
 export const InZenModeContext = new RawContextKey<boolean>('inZenMode', false);
+export const SidebarVisibleContext = new RawContextKey<boolean>('sidebarVisible', false);
 export const NoEditorsVisibleContext: ContextKeyExpr = EditorsVisibleContext.toNegated();
 
 interface WorkbenchParams {
@@ -152,6 +152,7 @@ export class Workbench implements IPartService {
 	private static zenModeActiveSettingKey = 'workbench.zenmode.active';
 
 	private static sidebarPositionConfigurationKey = 'workbench.sideBar.location';
+	private static panelPositionConfigurationKey = 'workbench.panel.location';
 	private static statusbarVisibleConfigurationKey = 'workbench.statusBar.visible';
 	private static activityBarVisibleConfigurationKey = 'workbench.activityBar.visible';
 
@@ -194,12 +195,14 @@ export class Workbench implements IPartService {
 	private statusBarHidden: boolean;
 	private activityBarHidden: boolean;
 	private sideBarPosition: Position;
+	private panelPosition: Position;
 	private panelHidden: boolean;
 	private editorBackgroundDelayer: Delayer<void>;
 	private closeEmptyWindowScheduler: RunOnceScheduler;
 	private messagesVisibleContext: IContextKey<boolean>;
 	private editorsVisibleContext: IContextKey<boolean>;
 	private inZenMode: IContextKey<boolean>;
+	private sideBarVisibleContext: IContextKey<boolean>;
 	private hasFilesToCreateOpenOrDiff: boolean;
 	private fontAliasing: string;
 	private zenMode: {
@@ -265,9 +268,6 @@ export class Workbench implements IPartService {
 	 * once. Use the shutdown function to free up resources created by the workbench on startup.
 	 */
 	public startup(callbacks?: IWorkbenchCallbacks): void {
-		assert.ok(!this.workbenchStarted, 'Can not start a workbench that was already started');
-		assert.ok(!this.workbenchShutdown, 'Can not start a workbench that was shutdown');
-
 		try {
 			this.workbenchStarted = true;
 			this.callbacks = callbacks;
@@ -288,6 +288,7 @@ export class Workbench implements IPartService {
 			this.messagesVisibleContext = MessagesVisibleContext.bindTo(this.contextKeyService);
 			this.editorsVisibleContext = EditorsVisibleContext.bindTo(this.contextKeyService);
 			this.inZenMode = InZenModeContext.bindTo(this.contextKeyService);
+			this.sideBarVisibleContext = SidebarVisibleContext.bindTo(this.contextKeyService);
 
 			// Register Listeners
 			this.registerListeners();
@@ -308,6 +309,7 @@ export class Workbench implements IPartService {
 			let viewletRestoreStopWatch: StopWatch;
 			let viewletIdToRestore: string;
 			if (!this.sideBarHidden) {
+				this.sideBarVisibleContext.set(true);
 
 				if (this.shouldRestoreLastOpenedViewlet()) {
 					viewletIdToRestore = this.storageService.get(SidebarPart.activeViewletSettingsKey, StorageScope.WORKSPACE);
@@ -643,6 +645,10 @@ export class Workbench implements IPartService {
 		const sideBarPosition = this.configurationService.getValue<string>(Workbench.sidebarPositionConfigurationKey);
 		this.sideBarPosition = (sideBarPosition === 'right') ? Position.RIGHT : Position.LEFT;
 
+		// Panel position
+		const panelPosition = this.configurationService.getValue<string>(Workbench.panelPositionConfigurationKey);
+		this.panelPosition = (panelPosition === 'right') ? Position.RIGHT : Position.BOTTOM;
+
 		// Statusbar visibility
 		const statusBarVisible = this.configurationService.getValue<string>(Workbench.statusbarVisibleConfigurationKey);
 		this.statusBarHidden = !statusBarVisible;
@@ -790,6 +796,7 @@ export class Workbench implements IPartService {
 
 	public setSideBarHidden(hidden: boolean, skipLayout?: boolean): TPromise<void> {
 		this.sideBarHidden = hidden;
+		this.sideBarVisibleContext.set(!hidden);
 
 		// Adjust CSS
 		if (hidden) {
@@ -915,6 +922,30 @@ export class Workbench implements IPartService {
 		// Update Styles
 		this.activitybarPart.updateStyles();
 		this.sidebarPart.updateStyles();
+
+		// Layout
+		this.workbenchLayout.layout();
+	}
+
+	public getPanelPosition(): Position {
+		return this.panelPosition;
+	}
+
+	private setPanelPosition(position: Position): void {
+		if (this.panelHidden) {
+			this.setPanelHidden(false, true /* Skip Layout */).done(undefined, errors.onUnexpectedError);
+		}
+
+		const newPositionValue = (position === Position.BOTTOM) ? 'bottom' : 'right';
+		const oldPositionValue = (this.panelPosition === Position.BOTTOM) ? 'bottom' : 'right';
+		this.panelPosition = position;
+
+		// Adjust CSS
+		this.panelPart.getContainer().removeClass(oldPositionValue);
+		this.panelPart.getContainer().addClass(newPositionValue);
+
+		// Update Styles
+		this.panelPart.updateStyles();
 
 		// Layout
 		this.workbenchLayout.layout();
@@ -1075,6 +1106,12 @@ export class Workbench implements IPartService {
 			this.setSideBarPosition(newSidebarPosition);
 		}
 
+		const newPanelPositionValue = this.configurationService.getValue<string>(Workbench.panelPositionConfigurationKey);
+		const newPanelPosition = (newPanelPositionValue === 'right') ? Position.RIGHT : Position.BOTTOM;
+		if (newPanelPosition !== this.getPanelPosition()) {
+			this.setPanelPosition(newPanelPosition);
+		}
+
 		const fontAliasing = this.configurationService.getValue<string>(Workbench.fontAliasingConfigurationKey);
 		if (fontAliasing !== this.fontAliasing) {
 			this.setFontAliasing(fontAliasing);
@@ -1189,7 +1226,7 @@ export class Workbench implements IPartService {
 	private createPanelPart(): void {
 		const panelPartContainer = $(this.workbench)
 			.div({
-				'class': ['part', 'panel'],
+				'class': ['part', 'panel', this.panelPosition === Position.BOTTOM ? 'bottom' : 'right'],
 				id: Identifiers.PANEL_PART,
 				role: 'complementary'
 			});
@@ -1219,26 +1256,18 @@ export class Workbench implements IPartService {
 	}
 
 	public getEditorPart(): EditorPart {
-		assert.ok(this.workbenchStarted, 'Workbench is not started. Call startup() first.');
-
 		return this.editorPart;
 	}
 
 	public getSidebarPart(): SidebarPart {
-		assert.ok(this.workbenchStarted, 'Workbench is not started. Call startup() first.');
-
 		return this.sidebarPart;
 	}
 
 	public getPanelPart(): PanelPart {
-		assert.ok(this.workbenchStarted, 'Workbench is not started. Call startup() first.');
-
 		return this.panelPart;
 	}
 
 	public getInstantiationService(): IInstantiationService {
-		assert.ok(this.workbenchStarted, 'Workbench is not started. Call startup() first.');
-
 		return this.instantiationService;
 	}
 
@@ -1260,6 +1289,7 @@ export class Workbench implements IPartService {
 
 	public toggleZenMode(skipLayout?: boolean): void {
 		this.zenMode.active = !this.zenMode.active;
+
 		// Check if zen mode transitioned to full screen and if now we are out of zen mode -> we need to go out of full screen
 		let toggleFullScreen = false;
 		if (this.zenMode.active) {
@@ -1274,9 +1304,11 @@ export class Workbench implements IPartService {
 			if (config.hideActivityBar) {
 				this.setActivityBarHidden(true, true);
 			}
+
 			if (config.hideStatusBar) {
 				this.setStatusBarHidden(true, true);
 			}
+
 			if (config.hideTabs) {
 				this.editorPart.hideTabs(true);
 			}
@@ -1284,9 +1316,11 @@ export class Workbench implements IPartService {
 			if (this.zenMode.wasPanelVisible) {
 				this.setPanelHidden(false, true).done(undefined, errors.onUnexpectedError);
 			}
+
 			if (this.zenMode.wasSideBarVisible) {
 				this.setSideBarHidden(false, true).done(undefined, errors.onUnexpectedError);
 			}
+
 			// Status bar and activity bar visibility come from settings -> update their visibility.
 			this.onDidUpdateConfiguration(true);
 			this.editorPart.hideTabs(false);
@@ -1294,13 +1328,16 @@ export class Workbench implements IPartService {
 			if (activeEditor) {
 				activeEditor.focus();
 			}
+
 			toggleFullScreen = this.zenMode.transitionedToFullScreen && browser.isFullscreen();
 		}
+
 		this.inZenMode.set(this.zenMode.active);
 
 		if (!skipLayout) {
 			this.layout();
 		}
+
 		if (toggleFullScreen) {
 			this.windowService.toggleFullScreen().done(undefined, errors.onUnexpectedError);
 		}

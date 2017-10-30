@@ -5,7 +5,7 @@
 'use strict';
 
 import URI from 'vs/base/common/uri';
-import Event, { Emitter, debounceEvent, any } from 'vs/base/common/event';
+import Event, { Emitter, debounceEvent, anyEvent } from 'vs/base/common/event';
 import { IDecorationsService, IDecoration, IResourceDecorationChangeEvent, IDecorationsProvider, IDecorationData } from './decorations';
 import { TernarySearchTree } from 'vs/base/common/map';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
@@ -14,8 +14,8 @@ import { LinkedList } from 'vs/base/common/linkedList';
 import { createStyleSheet, createCSSRule, removeCSSRulesContainingSelector } from 'vs/base/browser/dom';
 import { IThemeService, ITheme } from 'vs/platform/theme/common/themeService';
 import { IdGenerator } from 'vs/base/common/idGenerator';
-import { listActiveSelectionForeground } from 'vs/platform/theme/common/colorRegistry';
 import { IIterator } from 'vs/base/common/iterator';
+import { isFalsyOrWhitespace } from 'vs/base/common/strings';
 
 class DecorationRule {
 
@@ -52,11 +52,9 @@ class DecorationRule {
 		const { color, letter } = data;
 		// label
 		createCSSRule(`.${this.labelClassName}`, `color: ${theme.getColor(color) || 'inherit'};`, element);
-		createCSSRule(`.focused .selected .${this.labelClassName}`, `color: inherit; opacity: inherit;`, element);
-		// badge
+		// letter
 		if (letter) {
-			createCSSRule(`.${this.badgeClassName}`, `background-color: ${theme.getColor(color)}; color: ${theme.getColor(listActiveSelectionForeground)};`, element);
-			createCSSRule(`.${this.badgeClassName}::before`, `content: "${letter}"`, element);
+			createCSSRule(`.${this.badgeClassName}::after`, `content: "${letter}"; color: ${theme.getColor(color) || 'inherit'};`, element);
 		}
 	}
 
@@ -64,53 +62,17 @@ class DecorationRule {
 		// label
 		const { color } = data[0];
 		createCSSRule(`.${this.labelClassName}`, `color: ${theme.getColor(color) || 'inherit'};`, element);
-		createCSSRule(`.focused .selected .${this.labelClassName}`, `color: inherit; opacity: inherit;`, element);
 
 		// badge
-		let letters: string[] = [];
-		let colors: string[] = [];
-		for (const deco of data) {
-			letters.push(deco.letter);
-			colors.push(`${theme.getColor(deco.color).toString()} ${100 / data.length}%`);
+		const letters = data.filter(d => !isFalsyOrWhitespace(d.letter)).map(d => d.letter);
+		if (letters.length) {
+			createCSSRule(`.${this.badgeClassName}::after`, `content: "${letters.join(', ')}"; color: ${theme.getColor(color) || 'inherit'};`, element);
 		}
-		createCSSRule(`.${this.badgeClassName}::before`, `content: "${letters.join('\u2002')}"`, element);
-		createCSSRule(
-			`.${this.badgeClassName}`,
-			`background: linear-gradient(90deg, ${colors.join()}); color: ${theme.getColor(listActiveSelectionForeground)};`,
-			element
-		);
 	}
 
 	removeCSSRules(element: HTMLStyleElement): void {
 		removeCSSRulesContainingSelector(this.labelClassName, element);
 		removeCSSRulesContainingSelector(this.badgeClassName, element);
-	}
-}
-
-class ResourceDecoration implements IDecoration {
-
-	static from(data: IDecorationData | IDecorationData[]): ResourceDecoration {
-		let result = new ResourceDecoration(data);
-		if (Array.isArray(data)) {
-			result.weight = data[0].weight;
-			result.title = data.map(d => d.title).join(', ');
-		} else {
-			result.weight = data.weight;
-			result.title = data.title;
-		}
-		return result;
-	}
-
-	_decoBrand: undefined;
-	_data: IDecorationData | IDecorationData[];
-
-	weight?: number;
-	title?: string;
-	labelClassName?: string;
-	badgeClassName?: string;
-
-	private constructor(data: IDecorationData | IDecorationData[]) {
-		this._data = data;
 	}
 }
 
@@ -133,10 +95,13 @@ class DecorationStyles {
 		this._styleElement.parentElement.removeChild(this._styleElement);
 	}
 
-	asDecoration(data: IDecorationData | IDecorationData[]): ResourceDecoration {
+	asDecoration(data: IDecorationData[], onlyChildren: boolean): IDecoration {
+
+		// sort by weight
+		data.sort((a, b) => b.weight - a.weight);
+
 		let key = DecorationRule.keyOf(data);
 		let rule = this._decorationRules.get(key);
-		let result = ResourceDecoration.from(data);
 
 		if (!rule) {
 			// new css rule
@@ -145,9 +110,34 @@ class DecorationStyles {
 			rule.appendCSSRules(this._styleElement, this._themeService.getTheme());
 		}
 
-		result.labelClassName = rule.labelClassName;
-		result.badgeClassName = rule.badgeClassName;
-		return result;
+		return {
+			labelClassName: rule.labelClassName,
+			badgeClassName: !onlyChildren ? rule.badgeClassName : '',
+			tooltip: !onlyChildren ? data.filter(d => !isFalsyOrWhitespace(d.tooltip)).map(d => d.tooltip).join(', ') : '',
+			update: (source, insert) => {
+				let newData = data.slice();
+				if (!source) {
+					// add -> just append
+					newData.push(insert);
+
+				} else {
+					// remove/replace -> require a walk
+					for (let i = 0; i < newData.length; i++) {
+						if (newData[i].source === source) {
+							if (!insert) {
+								// remove
+								newData.splice(i, 1);
+								i--;
+							} else {
+								// replace
+								newData[i] = insert;
+							}
+						}
+					}
+				}
+				return this.asDecoration(newData, onlyChildren);
+			}
+		};
 	}
 
 	private _onThemeChange(): void {
@@ -160,15 +150,11 @@ class DecorationStyles {
 	cleanUp(iter: IIterator<DecorationProviderWrapper>): void {
 		// remove every rule for which no more
 		// decoration (data) is kept. this isn't cheap
-		let usedDecorations = new Set<IDecorationData>();
+		let usedDecorations = new Set<string>();
 		for (let e = iter.next(); !e.done; e = iter.next()) {
-			e.value.data.forEach(value => {
-				if (value instanceof ResourceDecoration) {
-					if (Array.isArray(value._data)) {
-						value._data.forEach(data => usedDecorations.add(data));
-					} else {
-						usedDecorations.add(value._data);
-					}
+			e.value.data.forEach((value, key) => {
+				if (!isThenable<any>(value) && value) {
+					usedDecorations.add(DecorationRule.keyOf(value));
 				}
 			});
 		}
@@ -176,8 +162,8 @@ class DecorationStyles {
 			const { data } = value;
 			let remove: boolean;
 			if (Array.isArray(data)) {
-				remove = data.every(data => !usedDecorations.has(data));
-			} else if (!usedDecorations.has(data)) {
+				remove = data.some(data => !usedDecorations.has(DecorationRule.keyOf(data)));
+			} else if (!usedDecorations.has(DecorationRule.keyOf(data))) {
 				remove = true;
 			}
 			if (remove) {
@@ -317,7 +303,7 @@ export class FileDecorationsService implements IDecorationsService {
 	private readonly _decorationStyles: DecorationStyles;
 	private readonly _disposables: IDisposable[];
 
-	readonly onDidChangeDecorations: Event<IResourceDecorationChangeEvent> = any(
+	readonly onDidChangeDecorations: Event<IResourceDecorationChangeEvent> = anyEvent(
 		this._onDidChangeDecorations.event,
 		debounceEvent<URI | URI[], FileDecorationChangeEvent>(
 			this._onDidChangeDecorationsDelayed.event,
@@ -375,28 +361,33 @@ export class FileDecorationsService implements IDecorationsService {
 		};
 	}
 
-	getDecoration(uri: URI, includeChildren: boolean): IDecoration {
+	getDecoration(uri: URI, includeChildren: boolean, overwrite?: IDecorationData): IDecoration {
 		let data: IDecorationData[] = [];
-		let onlyChildren = true;
+		let containsChildren: boolean;
 		for (let iter = this._data.iterator(), next = iter.next(); !next.done; next = iter.next()) {
 			next.value.getOrRetrieve(uri, includeChildren, (deco, isChild) => {
 				if (!isChild || deco.bubble) {
 					data.push(deco);
-					onlyChildren = onlyChildren && isChild;
+					containsChildren = isChild || containsChildren;
 				}
 			});
 		}
 
 		if (data.length === 0) {
-			return undefined;
-		} else if (onlyChildren) {
-			let result = this._decorationStyles.asDecoration(data.sort((a, b) => b.weight - a.weight)[0]);
-			result.badgeClassName = '';
-			return result;
-		} else if (data.length === 1) {
-			return this._decorationStyles.asDecoration(data[0]);
+			// nothing, maybe overwrite data
+			if (overwrite) {
+				return this._decorationStyles.asDecoration([overwrite], containsChildren);
+			} else {
+				return undefined;
+			}
 		} else {
-			return this._decorationStyles.asDecoration(data.sort((a, b) => b.weight - a.weight));
+			// result, maybe overwrite
+			let result = this._decorationStyles.asDecoration(data, containsChildren);
+			if (overwrite) {
+				return result.update(overwrite.source, overwrite);
+			} else {
+				return result;
+			}
 		}
 	}
 }

@@ -4979,6 +4979,10 @@ declare module 'vscode' {
 		 * Args for the custom shell executable, this does not work on Windows (see #8429)
 		 */
 		shellArgs?: string[];
+		/**
+		 * Object with environment variables that will be added to the VS Code process.
+		 */
+		env?: { [key: string]: string | null };
 	}
 
 	/**
@@ -5194,9 +5198,45 @@ declare module 'vscode' {
 		export let workspaceFolders: WorkspaceFolder[] | undefined;
 
 		/**
+		 * The name of the workspace. `undefined` when no folder
+		 * has been opened.
+		 *
+		 * @readonly
+		 */
+		export let name: string | undefined;
+
+		/**
 		 * An event that is emitted when a workspace folder is added or removed.
 		 */
 		export const onDidChangeWorkspaceFolders: Event<WorkspaceFoldersChangeEvent>;
+
+		/**
+		 * Adds a workspace folder to the currently opened workspace.
+		 *
+		 * This method will be a no-op if the folder is already part of the workspace.
+		 *
+		 * Note: if this workspace had no folder opened, all extensions will be restarted
+		 * so that the (deprecated) `rootPath` property is updated to point to the first workspace
+		 * folder.
+		 *
+		 * @param folder a workspace folder to add.
+		 * @return A thenable that resolves when the workspace folder was added successfully.
+		 */
+		export function addWorkspaceFolder(uri: Uri, name?: string): Thenable<boolean>;
+
+		/**
+		 * Remove a workspace folder from the currently opened workspace.
+		 *
+		 * This method will be a no-op when called while not having a workspace opened.
+		 *
+		 * Note: if the first workspace folder is removed, all extensions will be restarted
+		 * so that the (deprecated) `rootPath` property is updated to point to the first workspace
+		 * folder.
+		 *
+		 * @param folder a [workspace folder](#WorkspaceFolder) to remove.
+		 * @return A thenable that resolves when the workspace folder was removed successfully
+		 */
+		export function removeWorkspaceFolder(folder: WorkspaceFolder): Thenable<boolean>;
 
 		/**
 		 * Returns the [workspace folder](#WorkspaceFolder) that contains a given uri.
@@ -5387,7 +5427,7 @@ declare module 'vscode' {
 		/**
 		 * An event that is emitted when the [configuration](#WorkspaceConfiguration) changed.
 		 */
-		export const onDidChangeConfiguration: Event<void>;
+		export const onDidChangeConfiguration: Event<ConfigurationChangeEvent>;
 
 		/**
 		 * Register a task provider.
@@ -5397,6 +5437,21 @@ declare module 'vscode' {
 		 * @return A [disposable](#Disposable) that unregisters this provider when being disposed.
 		 */
 		export function registerTaskProvider(type: string, provider: TaskProvider): Disposable;
+	}
+
+	/**
+	 * An event describing the change in Configuration
+	 */
+	export interface ConfigurationChangeEvent {
+
+		/**
+		 * Returns `true` if the given section for the given resource (if provided) has affected.
+		 *
+		 * @param section Configuration name, supports _dotted_ names.
+		 * @param resource A resource Uri.
+		 * @return `true` if the given section for the given resource (if provided) has affected.
+		 */
+		affectsConfiguration(section: string, resource?: Uri): boolean;
 	}
 
 	/**
@@ -6032,8 +6087,8 @@ declare module 'vscode' {
 
 	/**
 	 * A debug configuration provider allows to add the initial debug configurations to a newly created launch.json
-	 * and allows to resolve a launch configuration before it is used to start a new debug session.
-	 * A debug configuration provider is registered via #workspace.registerDebugConfigurationProvider.
+	 * and to resolve a launch configuration before it is used to start a new debug session.
+	 * A debug configuration provider is registered via #debug.registerDebugConfigurationProvider.
 	 */
 	export interface DebugConfigurationProvider {
 		/**
@@ -6050,11 +6105,12 @@ declare module 'vscode' {
 		 * Resolves a [debug configuration](#DebugConfiguration) by filling in missing values or by adding/changing/removing attributes.
 		 * If more than one debug configuration provider is registered for the same type, the resolveDebugConfiguration calls are chained
 		 * in arbitrary order and the initial debug configuration is piped through the chain.
+		 * Returning the value 'undefined' prevents the debug session from starting.
 		 *
 		 * @param folder The workspace folder from which the configuration originates from or undefined for a folderless setup.
 		 * @param debugConfiguration The [debug configuration](#DebugConfiguration) to resolve.
 		 * @param token A cancellation token.
-		 * @return The resolved debug configuration.
+		 * @return The resolved debug configuration or undefined.
 		 */
 		resolveDebugConfiguration?(folder: WorkspaceFolder | undefined, debugConfiguration: DebugConfiguration, token?: CancellationToken): ProviderResult<DebugConfiguration>;
 	}
