@@ -16,7 +16,7 @@ import * as editorCommon from 'vs/editor/common/editorCommon';
 import { Range, IRange } from 'vs/editor/common/core/range';
 import { IConfigurationRegistry, Extensions as ConfigurationExtensions, ConfigurationScope, IConfigurationPropertySchema } from 'vs/platform/configuration/common/configurationRegistry';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
-import { IPreferencesService, ISettingsGroup, ISetting, IPreferencesEditorModel, IFilterResult, ISettingsEditorModel } from 'vs/workbench/parts/preferences/common/preferences';
+import { IPreferencesService, ISettingsGroup, ISetting, IPreferencesEditorModel, IFilterResult, ISettingsEditorModel, IScoredResults } from 'vs/workbench/parts/preferences/common/preferences';
 import { SettingsEditorModel, DefaultSettingsEditorModel, WorkspaceConfigurationEditorModel } from 'vs/workbench/parts/preferences/common/preferencesModels';
 import { ICodeEditor, IEditorMouseEvent, MouseTargetType } from 'vs/editor/browser/editorBrowser';
 import { IContextMenuService, ContextSubMenu } from 'vs/platform/contextview/browser/contextView';
@@ -75,7 +75,6 @@ export class UserSettingsRenderer extends Disposable implements IPreferencesRend
 		@ITelemetryService private telemetryService: ITelemetryService,
 		@ITextFileService private textFileService: ITextFileService,
 		@IConfigurationService private configurationService: IConfigurationService,
-		@IMessageService private messageService: IMessageService,
 		@IInstantiationService protected instantiationService: IInstantiationService
 	) {
 		super();
@@ -183,10 +182,9 @@ export class WorkspaceSettingsRenderer extends UserSettingsRenderer implements I
 		@ITelemetryService telemetryService: ITelemetryService,
 		@ITextFileService textFileService: ITextFileService,
 		@IConfigurationService configurationService: IConfigurationService,
-		@IMessageService messageService: IMessageService,
 		@IInstantiationService instantiationService: IInstantiationService
 	) {
-		super(editor, preferencesModel, preferencesService, telemetryService, textFileService, configurationService, messageService, instantiationService);
+		super(editor, preferencesModel, preferencesService, telemetryService, textFileService, configurationService, instantiationService);
 		this.unsupportedSettingsRenderer = this._register(instantiationService.createInstance(UnsupportedSettingsRenderer, editor, preferencesModel));
 		this.workspaceConfigurationRenderer = this._register(instantiationService.createInstance(WorkspaceConfigurationRenderer, editor, preferencesModel));
 	}
@@ -211,10 +209,9 @@ export class FolderSettingsRenderer extends UserSettingsRenderer implements IPre
 		@ITelemetryService telemetryService: ITelemetryService,
 		@ITextFileService textFileService: ITextFileService,
 		@IConfigurationService configurationService: IConfigurationService,
-		@IMessageService messageService: IMessageService,
 		@IInstantiationService instantiationService: IInstantiationService
 	) {
-		super(editor, preferencesModel, preferencesService, telemetryService, textFileService, configurationService, messageService, instantiationService);
+		super(editor, preferencesModel, preferencesService, telemetryService, textFileService, configurationService, instantiationService);
 		this.unsupportedSettingsRenderer = this._register(instantiationService.createInstance(UnsupportedSettingsRenderer, editor, preferencesModel));
 	}
 
@@ -562,7 +559,8 @@ export class FeedbackWidgetRenderer extends Disposable {
 	constructor(private editor: ICodeEditor,
 		@IInstantiationService private instantiationService: IInstantiationService,
 		@IWorkbenchEditorService private editorService: IWorkbenchEditorService,
-		@ITelemetryService private telemetryService: ITelemetryService
+		@ITelemetryService private telemetryService: ITelemetryService,
+		@IMessageService private messageService: IMessageService
 	) {
 		super();
 	}
@@ -585,45 +583,52 @@ export class FeedbackWidgetRenderer extends Disposable {
 	}
 
 	private getFeedback(): void {
+		if (!this.telemetryService.isOptedIn) {
+			this.messageService.show(Severity.Error, 'Can\'t send feedback, user is opted out of telemetry');
+			return;
+		}
+
 		const result = this._currentResult;
-		const actualResults = result.filteredGroups[0] ? result.filteredGroups[0].sections[0].settings.map(setting => setting.key) : [];
+		const actualResultNames = Object.keys(result.metadata.scoredResults);
 
 		const feedbackQuery = {};
-		feedbackQuery['_comment'] = FeedbackWidgetRenderer.COMMENT_TEXT;
+		feedbackQuery['comment'] = FeedbackWidgetRenderer.COMMENT_TEXT;
 		feedbackQuery['queryString'] = result.query;
 		feedbackQuery['resultScores'] = {};
-		actualResults.forEach(settingKey => {
+		actualResultNames.forEach(settingKey => {
 			feedbackQuery['resultScores'][settingKey] = 10;
 		});
 
 		const contents = JSON.stringify(feedbackQuery, undefined, '    ');
-		this.editorService.openEditor({ contents }, /*sideBySide=*/true).then(feedbackEditor => {
+		this.editorService.openEditor({ contents, language: 'json' }, /*sideBySide=*/true).then(feedbackEditor => {
 			const sendFeedbackWidget = this._register(this.instantiationService.createInstance(FloatingClickWidget, feedbackEditor.getControl(), 'Send feedback', null));
 			sendFeedbackWidget.render();
 
 			this._register(sendFeedbackWidget.onClick(() => {
-				if (this.sendFeedback(feedbackEditor.getControl() as ICodeEditor, result, actualResults)) {
+				this.sendFeedback(feedbackEditor.getControl() as ICodeEditor, result, result.metadata.scoredResults).then(() => {
 					sendFeedbackWidget.dispose();
-				}
+					this.messageService.show(Severity.Info, 'Feedback sent successfully');
+				}, err => {
+					this.messageService.show(Severity.Error, 'Error sending feedback: ' + err.message);
+				});
 			}));
 		});
 	}
 
-	private sendFeedback(feedbackEditor: ICodeEditor, result: IFilterResult, actualResults: string[]): boolean {
+	private sendFeedback(feedbackEditor: ICodeEditor, result: IFilterResult, actualResults: IScoredResults): TPromise<void> {
 		const model = feedbackEditor.getModel();
 		const expectedQueryLines = model.getLinesContent();
-		let expectedQuery: string;
+		let expectedQuery: any;
 		try {
 			expectedQuery = JSON.parse(expectedQueryLines.join('\n'));
-			if (expectedQuery['_comment'] === FeedbackWidgetRenderer.COMMENT_TEXT) {
-				delete expectedQuery['_comment'];
-			}
 		} catch (e) {
 			// invalid JSON
+			return TPromise.wrapError(new Error('Invalid JSON: ' + e.message));
 		}
 
-		if (expectedQuery) {
-			/* __GDPR__
+		const userComment = expectedQuery.comment === FeedbackWidgetRenderer.COMMENT_TEXT ? undefined : expectedQuery.comment;
+
+		/* __GDPR__
 			"settingsSearchResultFeedback" : {
 				"query" : { "classification": "CustomContent", "purpose": "FeatureInsight" },
 				"userComment" : { "classification": "CustomerContent", "purpose": "FeatureInsight" },
@@ -633,19 +638,16 @@ export class FeedbackWidgetRenderer extends Disposable {
 				"duration" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
 				"timestamp" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
 			}
-			 */
-			this.telemetryService.publicLog('settingsSearchResultFeedback', {
-				query: result.query,
-				actualResults,
-				expectedQuery,
-				url: result.metadata.remoteUrl,
-				duration: result.metadata.duration,
-				timestamp: result.metadata.timestamp
-			});
-			return true;
-		}
-
-		return false;
+		*/
+		return this.telemetryService.publicLog('settingsSearchResultFeedback', {
+			query: result.query,
+			userComment,
+			actualResults,
+			expectedResults: expectedQuery.resultScores,
+			url: result.metadata.remoteUrl,
+			duration: result.metadata.duration,
+			timestamp: result.metadata.timestamp
+		});
 	}
 
 	private disposeWidget(): void {
