@@ -206,21 +206,6 @@ let workbenchProperties: { [path: string]: IJSONSchema; } = {
 		'description': nls.localize('openDefaultSettings', "Controls if opening settings also opens an editor showing all default settings."),
 		'default': true
 	},
-	'workbench.settings.experimentalFuzzySearchEndpoint': {
-		'type': 'string',
-		'description': nls.localize('experimentalFuzzySearchEndpoint', "Indicates the endpoint to use for the experimental settings search."),
-		'default': ''
-	},
-	'workbench.settings.experimentalFuzzySearchKey': {
-		'type': 'string',
-		'description': nls.localize('experimentalFuzzySearchKey', "Indicates the key to use for the experimental settings search."),
-		'default': ''
-	},
-	'workbench.settings.experimentalFuzzySearchBoost': {
-		'type': 'number',
-		'description': 'Indicates the amount to boost the "literal" component of the query. Temporary.',
-		'default': 10
-	},
 	'workbench.sideBar.location': {
 		'type': 'string',
 		'enum': ['left', 'right'],
@@ -247,13 +232,28 @@ let workbenchProperties: { [path: string]: IJSONSchema; } = {
 		'type': 'boolean',
 		'description': nls.localize('closeOnFileDelete', "Controls if editors showing a file should close automatically when the file is deleted or renamed by some other process. Disabling this will keep the editor open as dirty on such an event. Note that deleting from within the application will always close the editor and that dirty files will never close to preserve your data."),
 		'default': true
-	},
-	'workbench.confirmChangesToWorkspaceFromExtensions': {
-		'type': 'boolean',
-		'description': nls.localize('confirmChangesFromExtensions', "Controls if a confirmation should be shown for extensions that add or remove workspace folders."),
-		'default': true
 	}
 };
+
+if (product.quality !== 'stable') {
+	workbenchProperties['workbench.settings.experimentalFuzzySearchEndpoint'] = {
+		'type': 'string',
+		'description': nls.localize('experimentalFuzzySearchEndpoint', "Indicates the endpoint to use for the experimental settings search."),
+		'default': ''
+	};
+
+	workbenchProperties['workbench.settings.experimentalFuzzySearchKey'] = {
+		'type': 'string',
+		'description': nls.localize('experimentalFuzzySearchKey', "Indicates the key to use for the experimental settings search."),
+		'default': ''
+	};
+
+	workbenchProperties['workbench.settings.experimentalFuzzySearchBoost'] = {
+		'type': 'number',
+		'description': 'Indicates the amount to boost the "literal" component of the query. Temporary.',
+		'default': 10
+	};
+}
 
 if (isMacintosh) {
 	workbenchProperties['workbench.fontAliasing'] = {

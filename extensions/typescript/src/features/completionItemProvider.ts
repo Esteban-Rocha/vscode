@@ -195,7 +195,7 @@ export default class TypeScriptCompletionItemProvider implements CompletionItemP
 
 			// make sure we are in something that looks like an import path
 			const line = document.lineAt(position.line).text.slice(0, position.character);
-			if (!line.match(/\bfrom\s*["'][^'"]*$/) && !line.match(/\b(import|require)\(['"][^'"]*$/)) {
+			if (!line.match(/\b(from|import)\s*["'][^'"]*$/) && !line.match(/\b(import|require)\(['"][^'"]*$/)) {
 				return [];
 			}
 		}
@@ -209,7 +209,10 @@ export default class TypeScriptCompletionItemProvider implements CompletionItemP
 		}
 
 		try {
-			const args: CompletionsRequestArgs = vsPositionToTsFileLocation(file, position);
+			const args = {
+				...vsPositionToTsFileLocation(file, position),
+				includeExternalModuleExports: config.autoImportSuggestions
+			} as CompletionsRequestArgs;
 			const msg = await this.client.execute('completions', args, token);
 			// This info has to come from the tsserver. See https://github.com/Microsoft/TypeScript/issues/2831
 			// let isMemberCompletion = false;
@@ -285,7 +288,20 @@ export default class TypeScriptCompletionItemProvider implements CompletionItemP
 			item.detail = Previewer.plain(detail.displayParts);
 			const documentation = new MarkdownString();
 			if (item.source) {
-				documentation.appendMarkdown(localize('autoImportLabel', 'Auto import from \'{0}\'', item.source));
+				let importPath = `'${item.source}'`;
+				// Try to resolve the real import name that will be added
+				if (detail.codeActions && detail.codeActions[0]) {
+					const action = detail.codeActions[0];
+					if (action.changes[0] && action.changes[0].textChanges[0]) {
+						const textChange = action.changes[0].textChanges[0];
+						const matchedImport = textChange.newText.match(/(['"])(.+?)\1/);
+						if (matchedImport) {
+							importPath = matchedImport[0];
+							item.detail += ` — from ${matchedImport[0]}`;
+						}
+					}
+				}
+				documentation.appendMarkdown(localize('autoImportLabel', 'Auto import from {0}', importPath));
 				documentation.appendMarkdown('\n\n');
 			}
 

@@ -45,7 +45,7 @@ const nodeModules = ['electron', 'original-fs']
 // Build
 
 const builtInExtensions = [
-	{ name: 'ms-vscode.node-debug', version: '1.18.2' },
+	{ name: 'ms-vscode.node-debug', version: '1.18.3' },
 	{ name: 'ms-vscode.node-debug2', version: '1.18.4' }
 ];
 
@@ -210,7 +210,6 @@ function computeChecksum(filename) {
 	return hash;
 }
 
-const settingsSearchBuildId = getBuildNumber();
 function packageTask(platform, arch, opts) {
 	opts = opts || {};
 
@@ -275,6 +274,7 @@ function packageTask(platform, arch, opts) {
 		const packageJsonStream = gulp.src(['package.json'], { base: '.' })
 			.pipe(json({ name, version }));
 
+		const settingsSearchBuildId = getBuildNumber();
 		const date = new Date().toISOString();
 		const productJsonStream = gulp.src(['product.json'], { base: '.' })
 			.pipe(json({ commit, date, checksums, settingsSearchBuildId }));
@@ -462,6 +462,7 @@ gulp.task('upload-vscode-configuration', ['generate-vscode-configuration'], () =
 		return;
 	}
 
+	const settingsSearchBuildId = getBuildNumber();
 	if (!settingsSearchBuildId) {
 		console.error('Failed to compute build number');
 		return;
@@ -500,7 +501,7 @@ function getBuildNumber() {
 function getPreviousVersion(versionStr) {
 	function tagExists(tagName) {
 		try {
-			cp.execSync(`git rev-parse ${tagName}`);
+			cp.execSync(`git rev-parse ${tagName}`, { stdio: 'ignore' });
 			return true;
 		} catch (e) {
 			return false;
