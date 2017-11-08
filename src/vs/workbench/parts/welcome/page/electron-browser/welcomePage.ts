@@ -10,7 +10,6 @@ import * as path from 'path';
 import * as arrays from 'vs/base/common/arrays';
 import { WalkThroughInput } from 'vs/workbench/parts/welcome/walkThrough/node/walkThroughInput';
 import { IWorkbenchContribution } from 'vs/workbench/common/contributions';
-import { IPartService } from 'vs/workbench/services/part/common/partService';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { Position } from 'vs/platform/editor/common/editor';
@@ -30,7 +29,7 @@ import { IMessageService, Severity, CloseAction } from 'vs/platform/message/comm
 import { getInstalledExtensions, IExtensionStatus, onExtensionChanged, isKeymapExtension } from 'vs/workbench/parts/extensions/electron-browser/extensionsUtils';
 import { IExtensionEnablementService, IExtensionManagementService, IExtensionGalleryService, IExtensionTipsService } from 'vs/platform/extensionManagement/common/extensionManagement';
 import { used } from 'vs/workbench/parts/welcome/page/electron-browser/vs_code_welcome_page';
-import { ILifecycleService, StartupKind } from 'vs/platform/lifecycle/common/lifecycle';
+import { ILifecycleService, StartupKind, LifecyclePhase } from 'vs/platform/lifecycle/common/lifecycle';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
 import { tildify } from 'vs/base/common/labels';
 import { IThemeService, registerThemingParticipant } from 'vs/platform/theme/common/themeService';
@@ -50,7 +49,6 @@ const telemetryFrom = 'welcomePage';
 export class WelcomePageContribution implements IWorkbenchContribution {
 
 	constructor(
-		@IPartService partService: IPartService,
 		@IInstantiationService instantiationService: IInstantiationService,
 		@IConfigurationService configurationService: IConfigurationService,
 		@IWorkbenchEditorService editorService: IWorkbenchEditorService,
@@ -63,7 +61,7 @@ export class WelcomePageContribution implements IWorkbenchContribution {
 		if (enabled && lifecycleService.startupKind !== StartupKind.ReloadedWindow) {
 			TPromise.join([
 				backupFileService.hasBackups(),
-				partService.joinCreation()
+				lifecycleService.when(LifecyclePhase.Running)
 			]).then(([hasBackups]) => {
 				const activeInput = editorService.getActiveEditorInput();
 				if (!activeInput && !hasBackups) {
@@ -122,8 +120,8 @@ interface ExtensionSuggestion {
 const extensionPacks: ExtensionSuggestion[] = [
 	{ name: localize('welcomePage.javaScript', "JavaScript"), id: 'dbaeumer.vscode-eslint' },
 	{ name: localize('welcomePage.typeScript', "TypeScript"), id: 'eg2.tslint' },
-	{ name: localize('welcomePage.python', "Python"), id: 'donjayamanne.python' },
-	// { name: localize('welcomePage.go', "Go"), id: 'lukehoban.go' },
+	// { name: localize('welcomePage.python', "Python"), id: 'donjayamanne.python' },
+	{ name: localize('welcomePage.go', "Go"), id: 'lukehoban.go' },
 	{ name: localize('welcomePage.php', "PHP"), id: 'felixfbecker.php-pack' },
 	{ name: localize('welcomePage.azure', "Azure"), title: localize('welcomePage.showAzureExtensions', "Show Azure extensions"), id: 'workbench.extensions.action.showAzureExtensions', isCommand: true },
 	{ name: localize('welcomePage.docker', "Docker"), id: 'PeterJausovec.vscode-docker' },
@@ -243,7 +241,9 @@ class WelcomePage {
 		@IExtensionTipsService private tipsService: IExtensionTipsService,
 		@IExtensionsWorkbenchService private extensionsWorkbenchService: IExtensionsWorkbenchService,
 		@ILifecycleService lifecycleService: ILifecycleService,
+		// @ts-ignore unused injected service
 		@IThemeService private themeService: IThemeService,
+		// @ts-ignore unused injected service
 		@IExperimentService private experimentService: IExperimentService,
 		@ITelemetryService private telemetryService: ITelemetryService
 	) {
@@ -358,7 +358,7 @@ class WelcomePage {
 					this.updateInstalledExtensions(container, installedExtensions);
 					break;
 				}
-			};
+			}
 		}));
 	}
 

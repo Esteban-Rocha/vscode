@@ -32,8 +32,7 @@ import { ExtHostCustomersRegistry } from 'vs/workbench/api/electron-browser/extH
 import { IWindowService } from 'vs/platform/windows/common/windows';
 import { Action } from 'vs/base/common/actions';
 import { IDisposable } from 'vs/base/common/lifecycle';
-import { startTimer } from 'vs/base/node/startupTimers';
-import { toPromise, filterEvent } from 'vs/base/common/event';
+import { mark, time } from 'vs/base/common/performance';
 import { ILifecycleService, LifecyclePhase } from 'vs/platform/lifecycle/common/lifecycle';
 
 const SystemExtensionsRoot = path.normalize(path.join(URI.parse(require.toUrl('')).fsPath, '..', 'extensions'));
@@ -50,7 +49,7 @@ function messageWithSource2(source: string, message: string): string {
 }
 
 const hasOwnProperty = Object.hasOwnProperty;
-const NO_OP_VOID_PROMISE = TPromise.as<void>(void 0);
+const NO_OP_VOID_PROMISE = TPromise.wrap<void>(void 0);
 
 export class ExtensionService implements IExtensionService {
 	public _serviceBrand: any;
@@ -100,7 +99,7 @@ export class ExtensionService implements IExtensionService {
 		this._extensionHostProcessCustomers = [];
 		this._extensionHostProcessProxy = null;
 
-		toPromise(filterEvent(lifecycleService.onDidChangePhase, phase => phase === LifecyclePhase.Running)).then(() => {
+		lifecycleService.when(LifecyclePhase.Restoring).then(() => {
 			// delay extension host creation and extension scanning
 			// until after the editors/panels are restored
 			this._startExtensionHostProcess([]);
@@ -336,14 +335,14 @@ export class ExtensionService implements IExtensionService {
 			let messageHandler = (msg: IMessage) => this._handleExtensionPointMessage(msg);
 
 			for (let i = 0, len = extensionPoints.length; i < len; i++) {
-				const clock = startTimer(`handleExtensionPoint:${extensionPoints[i].name}`);
+				const clock = time(`handleExtensionPoint:${extensionPoints[i].name}`);
 				try {
 					ExtensionService._handleExtensionPoint(extensionPoints[i], availableExtensions, messageHandler);
 				} finally {
 					clock.stop();
 				}
 			}
-
+			mark('extensionHostReady');
 			this._barrier.open();
 		});
 	}

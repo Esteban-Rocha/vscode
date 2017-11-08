@@ -256,7 +256,7 @@ export class WorkbenchLayout implements IVerticalSashLayoutProvider, IHorizontal
 			let sidebarPosition = this.partService.getSideBarPosition();
 			let isSidebarVisible = this.partService.isVisible(Parts.SIDEBAR_PART);
 			let newSashWidth = (sidebarPosition === Position.LEFT) ? startSidebarWidth + e.currentX - startX : startSidebarWidth - e.currentX + startX;
-			let promise = TPromise.as<void>(null);
+			let promise = TPromise.wrap<void>(null);
 
 			// Sidebar visible
 			if (isSidebarVisible) {
@@ -295,7 +295,7 @@ export class WorkbenchLayout implements IVerticalSashLayoutProvider, IHorizontal
 			let doLayout = false;
 			let isPanelVisible = this.partService.isVisible(Parts.PANEL_PART);
 			let newSashHeight = startPanelHeight - (e.currentY - startY);
-			let promise = TPromise.as<void>(null);
+			let promise = TPromise.wrap<void>(null);
 
 			// Panel visible
 			if (isPanelVisible) {
@@ -333,7 +333,7 @@ export class WorkbenchLayout implements IVerticalSashLayoutProvider, IHorizontal
 			let doLayout = false;
 			let isPanelVisible = this.partService.isVisible(Parts.PANEL_PART);
 			let newSashWidth = startPanelWidth - (e.currentX - startXTwo);
-			let promise = TPromise.as<void>(null);
+			let promise = TPromise.wrap<void>(null);
 
 			// Panel visible
 			if (isPanelVisible) {
@@ -710,7 +710,7 @@ export class WorkbenchLayout implements IVerticalSashLayoutProvider, IHorizontal
 
 	// change part size along the main axis
 	public resizePart(part: Parts, sizeChange: number): void {
-		const visibleEditors = this.editorService.getVisibleEditors().length;
+		const panelPosition = this.partService.getPanelPosition();
 		const sizeChangePxWidth = this.workbenchSize.width * (sizeChange / 100);
 		const sizeChangePxHeight = this.workbenchSize.height * (sizeChange / 100);
 
@@ -720,24 +720,37 @@ export class WorkbenchLayout implements IVerticalSashLayoutProvider, IHorizontal
 			case Parts.SIDEBAR_PART:
 				this.sidebarWidth = this.sidebarWidth + sizeChangePxWidth; // Sidebar can not become smaller than MIN_PART_WIDTH
 
-				if (this.layoutEditorGroupsVertically && (this.workbenchSize.width - this.sidebarWidth < visibleEditors * MIN_EDITOR_PART_WIDTH)) {
-					this.sidebarWidth = (this.workbenchSize.width - visibleEditors * MIN_EDITOR_PART_WIDTH);
+				if (this.layoutEditorGroupsVertically && (this.workbenchSize.width - this.sidebarWidth < this.editorCountForWidth * MIN_EDITOR_PART_WIDTH)) {
+					this.sidebarWidth = (this.workbenchSize.width - this.editorCountForWidth * MIN_EDITOR_PART_WIDTH);
 				}
 
 				doLayout = true;
 				break;
 			case Parts.PANEL_PART:
-				this.panelHeight = this.panelHeight + sizeChangePxHeight;
-				this.panelWidth = this.panelWidth + sizeChangePxWidth;
+				if (panelPosition === Position.BOTTOM) {
+					this.panelHeight = this.panelHeight + sizeChangePxHeight;
+				} else if (panelPosition === Position.RIGHT) {
+					this.panelWidth = this.panelWidth + sizeChangePxWidth;
+				}
+
 				doLayout = true;
 				break;
 			case Parts.EDITOR_PART:
 				// If we have one editor we can cheat and resize sidebar with the negative delta
-				const visibleEditorCount = this.editorService.getVisibleEditors().length;
+				// If the sidebar is not visible and panel is, resize panel main axis with negative Delta
+				if (this.editorCountForWidth === 1) {
+					if (this.partService.isVisible(Parts.SIDEBAR_PART)) {
+						this.sidebarWidth = this.sidebarWidth - sizeChangePxWidth;
+						doLayout = true;
+					} else if (this.partService.isVisible(Parts.PANEL_PART)) {
+						if (panelPosition === Position.BOTTOM) {
+							this.panelHeight = this.panelHeight - sizeChangePxHeight;
+						} else if (panelPosition === Position.RIGHT) {
+							this.panelWidth = this.panelWidth - sizeChangePxWidth;
+						}
+						doLayout = true;
+					}
 
-				if (visibleEditorCount === 1) {
-					this.sidebarWidth = this.sidebarWidth - sizeChangePxWidth;
-					doLayout = true;
 				} else {
 					const stacks = this.editorGroupService.getStacksModel();
 					const activeGroup = stacks.positionOfGroup(stacks.activeGroup);

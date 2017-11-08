@@ -713,7 +713,7 @@ export abstract class CommonCodeEditor extends Disposable implements editorCommo
 
 		const action = this.getAction(handlerId);
 		if (action) {
-			TPromise.as(action.run()).done(null, onUnexpectedError);
+			TPromise.as(action.run()).then(null, onUnexpectedError);
 			return;
 		}
 
@@ -1036,8 +1036,6 @@ export abstract class CommonCodeEditor extends Disposable implements editorCommo
 class EditorContextKeysManager extends Disposable {
 
 	private _editor: CommonCodeEditor;
-
-	private _editorId: IContextKey<string>;
 	private _editorFocus: IContextKey<boolean>;
 	private _editorTextFocus: IContextKey<boolean>;
 	private _editorTabMovesFocus: IContextKey<boolean>;
@@ -1053,7 +1051,7 @@ class EditorContextKeysManager extends Disposable {
 
 		this._editor = editor;
 
-		this._editorId = contextKeyService.createKey('editorId', editor.getId());
+		contextKeyService.createKey('editorId', editor.getId());
 		this._editorFocus = EditorContextKeys.focus.bindTo(contextKeyService);
 		this._editorTextFocus = EditorContextKeys.textFocus.bindTo(contextKeyService);
 		this._editorTabMovesFocus = EditorContextKeys.tabMovesFocus.bindTo(contextKeyService);

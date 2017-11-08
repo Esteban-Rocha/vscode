@@ -45,7 +45,7 @@ const nodeModules = ['electron', 'original-fs']
 // Build
 
 const builtInExtensions = [
-	{ name: 'ms-vscode.node-debug', version: '1.18.3' },
+	{ name: 'ms-vscode.node-debug', version: '1.19.0' },
 	{ name: 'ms-vscode.node-debug2', version: '1.18.4' }
 ];
 
@@ -68,7 +68,7 @@ const vscodeResources = [
 	'out-build/bootstrap-amd.js',
 	'out-build/paths.js',
 	'out-build/vs/**/*.{svg,png,cur,html}',
-	'out-build/vs/base/node/startupTimers.js',
+	'out-build/vs/base/common/performance.js',
 	'out-build/vs/base/node/{stdForkStart.js,terminateProcess.sh}',
 	'out-build/vs/base/browser/ui/octiconLabel/octicons/**',
 	'out-build/vs/workbench/browser/media/*-theme.css',
@@ -452,7 +452,7 @@ gulp.task('upload-vscode-sourcemaps', ['minify-vscode'], () => {
 const allConfigDetailsPath = path.join(os.tmpdir(), 'configuration.json');
 gulp.task('upload-vscode-configuration', ['generate-vscode-configuration'], () => {
 	const branch = process.env.BUILD_SOURCEBRANCH;
-	if (!branch.endsWith('/master') && !branch.indexOf('/release/') >= 0) {
+	if (!branch.endsWith('/master') && !branch.startsWith('release/')) {
 		console.log(`Only runs on master and release branches, not ${branch}`);
 		return;
 	}
