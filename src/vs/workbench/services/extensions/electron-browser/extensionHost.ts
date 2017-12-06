@@ -55,6 +55,7 @@ export class ExtensionHostProcessWorker {
 
 	// Resources, in order they get acquired/created when .start() is called:
 	private _namedPipeServer: Server;
+	private _inspectPort: number;
 	private _extensionHostProcess: ChildProcess;
 	private _extensionHostConnection: Socket;
 	private _messageProtocol: TPromise<IMessagePassingProtocol>;
@@ -136,7 +137,7 @@ export class ExtensionHostProcessWorker {
 				const port = data[1];
 
 				const opts = {
-					env: objects.mixin(objects.clone(process.env), {
+					env: objects.mixin(objects.deepClone(process.env), {
 						AMD_ENTRYPOINT: 'vs/workbench/node/extensionHostProcess',
 						PIPE_LOGGING: 'true',
 						VERBOSE_LOGGING: true,
@@ -216,6 +217,7 @@ export class ExtensionHostProcessWorker {
 						}
 					});
 				}
+				this._inspectPort = port;
 
 				// Help in case we fail to start it
 				let startupTimeoutHandle: number;
@@ -265,7 +267,7 @@ export class ExtensionHostProcessWorker {
 			return TPromise.wrap<number>(0);
 		}
 		return new TPromise<number>((c, e) => {
-			findFreePort(extensionHostPort, 10 /* try 10 ports */, 5000 /* try up to 5 seconds */, (port) => {
+			return findFreePort(extensionHostPort, 10 /* try 10 ports */, 5000 /* try up to 5 seconds */).then(port => {
 				if (!port) {
 					console.warn('%c[Extension Host] %cCould not find a free port for debugging', 'color: blue', 'color: black');
 					return c(void 0);
@@ -363,7 +365,10 @@ export class ExtensionHostProcessWorker {
 				extensions: extensionDescriptions,
 				// Send configurations scopes only in development mode.
 				configuration: !this._environmentService.isBuilt || this._environmentService.isExtensionDevelopment ? { ...configurationData, configurationScopes: getScopes(this._configurationService.keys().default) } : configurationData,
-				telemetryInfo
+				telemetryInfo,
+				args: this._environmentService.args,
+				execPath: this._environmentService.execPath,
+				windowId: this._windowService.getCurrentWindowId()
 			};
 			return r;
 		});
@@ -424,6 +429,10 @@ export class ExtensionHostProcessWorker {
 		else {
 			ipc.send('vscode:exit', code);
 		}
+	}
+
+	public getInspectPort(): number {
+		return this._inspectPort;
 	}
 
 	public terminate(): void {

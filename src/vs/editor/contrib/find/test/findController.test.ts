@@ -11,14 +11,16 @@ import { EditOperation } from 'vs/editor/common/core/editOperation';
 import { Position } from 'vs/editor/common/core/position';
 import { Selection } from 'vs/editor/common/core/selection';
 import { Range } from 'vs/editor/common/core/range';
-import { ICommonCodeEditor } from 'vs/editor/common/editorCommon';
-import { CommonFindController, FindStartFocusAction, IFindStartOptions, NextMatchFindAction, StartFindAction } from 'vs/editor/contrib/find/common/findController';
-import { withMockCodeEditor } from 'vs/editor/test/common/mocks/mockCodeEditor';
+import * as platform from 'vs/base/common/platform';
+import { CommonFindController, FindStartFocusAction, IFindStartOptions, NextMatchFindAction, StartFindAction } from 'vs/editor/contrib/find/findController';
+import { withTestCodeEditor } from 'vs/editor/test/browser/testCodeEditor';
 import { HistoryNavigator } from 'vs/base/common/history';
 import { IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
+import { IClipboardService } from 'vs/platform/clipboard/common/clipboardService';
 import { IStorageService } from 'vs/platform/storage/common/storage';
 import { ServiceCollection } from 'vs/platform/instantiation/common/serviceCollection';
 import { Delayer } from 'vs/base/common/async';
+import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
 export class TestFindController extends CommonFindController {
 
@@ -28,8 +30,13 @@ export class TestFindController extends CommonFindController {
 
 	private _delayedUpdateHistoryEvent: Emitter<void> = new Emitter<void>();
 
-	constructor(editor: ICommonCodeEditor, @IContextKeyService contextKeyService: IContextKeyService, @IStorageService storageService: IStorageService) {
-		super(editor, contextKeyService, storageService);
+	constructor(
+		editor: ICodeEditor,
+		@IContextKeyService contextKeyService: IContextKeyService,
+		@IStorageService storageService: IStorageService,
+		@IClipboardService clipboardService: IClipboardService
+	) {
+		super(editor, contextKeyService, storageService, clipboardService);
 		this._updateHistoryDelayer = new Delayer<void>(50);
 	}
 
@@ -70,6 +77,7 @@ function fromRange(rng: Range): number[] {
 
 suite('FindController', () => {
 	let queryState: { [key: string]: any; } = {};
+	let clipboardState = '';
 	let serviceCollection = new ServiceCollection();
 	serviceCollection.set(IStorageService, {
 		get: (key: string) => queryState[key],
@@ -77,14 +85,96 @@ suite('FindController', () => {
 		store: (key: string, value: any) => { queryState[key] = value; }
 	} as IStorageService);
 
-	test('issue #1857: F3, Find Next, acts like "Find Under Cursor"', () => {
-		withMockCodeEditor([
+	if (platform.isMacintosh) {
+		serviceCollection.set(IClipboardService, <any>{
+			readFindText: _ => clipboardState,
+			writeFindText: (value: any) => { clipboardState = value; }
+		});
+	}
+
+	test('stores to the global clipboard buffer on start find action', () => {
+		withTestCodeEditor([
 			'ABC',
 			'ABC',
 			'XYZ',
 			'ABC'
 		], { serviceCollection: serviceCollection }, (editor, cursor) => {
+			clipboardState = '';
+			if (!platform.isMacintosh) {
+				assert.ok(true);
+				return;
+			}
+			let findController = editor.registerAndInstantiateContribution<TestFindController>(TestFindController);
+			let startFindAction = new StartFindAction();
+			// I select ABC on the first line
+			editor.setSelection(new Selection(1, 1, 1, 4));
+			// I hit Ctrl+F to show the Find dialog
+			startFindAction.run(null, editor);
 
+			assert.deepEqual(findController.getGlobalBufferTerm(), findController.getState().searchString);
+			findController.dispose();
+		});
+	});
+
+	test('reads from the global clipboard buffer on next find action if buffer exists', () => {
+		withTestCodeEditor([
+			'ABC',
+			'ABC',
+			'XYZ',
+			'ABC'
+		], { serviceCollection: serviceCollection }, (editor, cursor) => {
+			clipboardState = 'ABC';
+
+			if (!platform.isMacintosh) {
+				assert.ok(true);
+				return;
+			}
+
+			let findController = editor.registerAndInstantiateContribution<TestFindController>(TestFindController);
+			let findState = findController.getState();
+			let nextMatchFindAction = new NextMatchFindAction();
+
+			nextMatchFindAction.run(null, editor);
+			assert.equal(findState.searchString, 'ABC');
+
+			assert.deepEqual(fromRange(editor.getSelection()), [1, 1, 1, 4]);
+
+			findController.dispose();
+		});
+	});
+
+	test('writes to the global clipboard buffer when text changes', () => {
+		withTestCodeEditor([
+			'ABC',
+			'ABC',
+			'XYZ',
+			'ABC'
+		], { serviceCollection: serviceCollection }, (editor, cursor) => {
+			clipboardState = '';
+			if (!platform.isMacintosh) {
+				assert.ok(true);
+				return;
+			}
+
+			let findController = editor.registerAndInstantiateContribution<TestFindController>(TestFindController);
+			let findState = findController.getState();
+
+			findState.change({ searchString: 'ABC' }, true);
+
+			assert.deepEqual(findController.getGlobalBufferTerm(), 'ABC');
+
+			findController.dispose();
+		});
+	});
+
+	test('issue #1857: F3, Find Next, acts like "Find Under Cursor"', () => {
+		withTestCodeEditor([
+			'ABC',
+			'ABC',
+			'XYZ',
+			'ABC'
+		], { serviceCollection: serviceCollection }, (editor, cursor) => {
+			clipboardState = '';
 			// The cursor is at the very top, of the file, at the first ABC
 			let findController = editor.registerAndInstantiateContribution<TestFindController>(TestFindController);
 			let findState = findController.getState();
@@ -136,10 +226,10 @@ suite('FindController', () => {
 	});
 
 	test('issue #3090: F3 does not loop with two matches on a single line', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'import nls = require(\'vs/nls\');'
 		], { serviceCollection: serviceCollection }, (editor, cursor) => {
-
+			clipboardState = '';
 			let findController = editor.registerAndInstantiateContribution<TestFindController>(TestFindController);
 			let nextMatchFindAction = new NextMatchFindAction();
 
@@ -159,12 +249,12 @@ suite('FindController', () => {
 	});
 
 	test('issue #6149: Auto-escape highlighted text for search and replace regex mode', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'var x = (3 * 5)',
 			'var y = (3 * 5)',
 			'var z = (3  * 5)',
 		], { serviceCollection: serviceCollection }, (editor, cursor) => {
-
+			clipboardState = '';
 			let findController = editor.registerAndInstantiateContribution<TestFindController>(TestFindController);
 			let startFindAction = new StartFindAction();
 			let nextMatchFindAction = new NextMatchFindAction();
@@ -185,12 +275,12 @@ suite('FindController', () => {
 	});
 
 	test('issue #9043: Clear search scope when find widget is hidden', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'var x = (3 * 5)',
 			'var y = (3 * 5)',
 			'var z = (3 * 5)',
 		], { serviceCollection: serviceCollection }, (editor, cursor) => {
-
+			clipboardState = '';
 			let findController = editor.registerAndInstantiateContribution<TestFindController>(TestFindController);
 			findController.start({
 				forceRevealReplace: false,
@@ -213,12 +303,12 @@ suite('FindController', () => {
 	});
 
 	test('find term is added to history on state change', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'var x = (3 * 5)',
 			'var y = (3 * 5)',
 			'var z = (3 * 5)',
 		], { serviceCollection: serviceCollection }, (editor, cursor) => {
-
+			clipboardState = '';
 			let findController = editor.registerAndInstantiateContribution<TestFindController>(TestFindController);
 			findController.getState().change({ searchString: '1' }, false);
 			findController.getState().change({ searchString: '2' }, false);
@@ -229,12 +319,12 @@ suite('FindController', () => {
 	});
 
 	test('find term is added with delay', (done) => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'var x = (3 * 5)',
 			'var y = (3 * 5)',
 			'var z = (3 * 5)',
 		], { serviceCollection: serviceCollection }, (editor, cursor) => {
-
+			clipboardState = '';
 			let findController = editor.registerAndInstantiateContribution<TestFindController>(TestFindController);
 			findController.delayUpdateHistory = true;
 			findController.getState().change({ searchString: '1' }, false);
@@ -249,12 +339,12 @@ suite('FindController', () => {
 	});
 
 	test('show previous find term', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'var x = (3 * 5)',
 			'var y = (3 * 5)',
 			'var z = (3 * 5)',
 		], { serviceCollection: serviceCollection }, (editor, cursor) => {
-
+			clipboardState = '';
 			let findController = editor.registerAndInstantiateContribution<TestFindController>(TestFindController);
 			findController.getState().change({ searchString: '1' }, false);
 			findController.getState().change({ searchString: '2' }, false);
@@ -266,12 +356,12 @@ suite('FindController', () => {
 	});
 
 	test('show previous find term do not update history', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'var x = (3 * 5)',
 			'var y = (3 * 5)',
 			'var z = (3 * 5)',
 		], { serviceCollection: serviceCollection }, (editor, cursor) => {
-
+			clipboardState = '';
 			let findController = editor.registerAndInstantiateContribution<TestFindController>(TestFindController);
 			findController.getState().change({ searchString: '1' }, false);
 			findController.getState().change({ searchString: '2' }, false);
@@ -283,12 +373,12 @@ suite('FindController', () => {
 	});
 
 	test('show next find term', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'var x = (3 * 5)',
 			'var y = (3 * 5)',
 			'var z = (3 * 5)',
 		], { serviceCollection: serviceCollection }, (editor, cursor) => {
-
+			clipboardState = '';
 			let findController = editor.registerAndInstantiateContribution<TestFindController>(TestFindController);
 			findController.getState().change({ searchString: '1' }, false);
 			findController.getState().change({ searchString: '2' }, false);
@@ -303,12 +393,12 @@ suite('FindController', () => {
 	});
 
 	test('show next find term do not update history', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'var x = (3 * 5)',
 			'var y = (3 * 5)',
 			'var z = (3 * 5)',
 		], { serviceCollection: serviceCollection }, (editor, cursor) => {
-
+			clipboardState = '';
 			let findController = editor.registerAndInstantiateContribution<TestFindController>(TestFindController);
 			findController.getState().change({ searchString: '1' }, false);
 			findController.getState().change({ searchString: '2' }, false);
@@ -323,10 +413,10 @@ suite('FindController', () => {
 	});
 
 	test('issue #18111: Regex replace with single space replaces with no space', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'HRESULT OnAmbientPropertyChange(DISPID   dispid);'
 		], { serviceCollection: serviceCollection }, (editor, cursor) => {
-
+			clipboardState = '';
 			let findController = editor.registerAndInstantiateContribution<TestFindController>(TestFindController);
 
 			let startFindAction = new StartFindAction();
@@ -348,12 +438,12 @@ suite('FindController', () => {
 	});
 
 	test('issue #24714: Regular expression with ^ in search & replace', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'',
 			'line2',
 			'line3'
 		], { serviceCollection: serviceCollection }, (editor, cursor) => {
-
+			clipboardState = '';
 			let findController = editor.registerAndInstantiateContribution<TestFindController>(TestFindController);
 
 			let startFindAction = new StartFindAction();
@@ -399,7 +489,7 @@ suite('FindController query options persistence', () => {
 	} as IStorageService);
 
 	test('matchCase', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'abc',
 			'ABC',
 			'XYZ',
@@ -426,7 +516,7 @@ suite('FindController query options persistence', () => {
 	queryState = { 'editor.isRegex': false, 'editor.matchCase': false, 'editor.wholeWord': true };
 
 	test('wholeWord', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'ABC',
 			'AB',
 			'XYZ',
@@ -451,7 +541,7 @@ suite('FindController query options persistence', () => {
 	});
 
 	test('toggling options is saved', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'ABC',
 			'AB',
 			'XYZ',

@@ -5,8 +5,8 @@
 'use strict';
 
 import { Selection } from 'vs/editor/common/core/selection';
-import { CopyLinesCommand } from 'vs/editor/contrib/linesOperations/common/copyLinesCommand';
-import { testCommand } from 'vs/editor/test/common/commands/commandTestUtils';
+import { CopyLinesCommand } from 'vs/editor/contrib/linesOperations/copyLinesCommand';
+import { testCommand } from 'vs/editor/test/browser/testCommand';
 
 function testCopyLinesDownCommand(lines: string[], selection: Selection, expectedLines: string[], expectedSelection: Selection): void {
 	testCommand(lines, null, selection, (sel) => new CopyLinesCommand(sel, true), expectedLines, expectedSelection);
@@ -196,5 +196,3 @@ suite('Editor Contrib - Copy Lines Command', () => {
 		);
 	});
 });
-
-

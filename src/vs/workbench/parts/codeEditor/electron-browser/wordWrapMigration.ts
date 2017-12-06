@@ -9,7 +9,7 @@ import { Disposable } from 'vs/base/common/lifecycle';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { IEditorContribution } from 'vs/editor/common/editorCommon';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
-import { registerEditorContribution } from 'vs/editor/browser/editorBrowserExtensions';
+import { registerEditorContribution } from 'vs/editor/browser/editorExtensions';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { IStorageService, StorageScope } from 'vs/platform/storage/common/storage';
 import { IMessageService } from 'vs/platform/message/common/message';
@@ -22,7 +22,7 @@ interface IStorageData {
 }
 
 class WordWrapMigrationStorage {
-	private static KEY = 'wordWrapMigration';
+	private static readonly KEY = 'wordWrapMigration';
 
 	private _storageService: IStorageService;
 	private _value: IStorageData;
@@ -56,7 +56,7 @@ class WordWrapMigrationStorage {
 
 class WordWrapMigrationController extends Disposable implements IEditorContribution {
 
-	private static ID = 'editor.contrib.wordWrapMigrationController';
+	private static readonly ID = 'editor.contrib.wordWrapMigrationController';
 	private static _checked = false;
 
 	constructor(

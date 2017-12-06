@@ -4,8 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 'use strict';
 import { Selection } from 'vs/editor/common/core/selection';
-import { MoveLinesCommand } from 'vs/editor/contrib/linesOperations/common/moveLinesCommand';
-import { testCommand } from 'vs/editor/test/common/commands/commandTestUtils';
+import { MoveLinesCommand } from 'vs/editor/contrib/linesOperations/moveLinesCommand';
+import { testCommand } from 'vs/editor/test/browser/testCommand';
 import { MockMode } from 'vs/editor/test/common/mocks/mockMode';
 import { LanguageIdentifier } from 'vs/editor/common/modes';
 import { IndentationRule } from 'vs/editor/common/modes/languageConfiguration';
@@ -260,7 +260,7 @@ suite('Editor Contrib - Move Lines Command', () => {
 });
 
 class IndentRulesMode extends MockMode {
-	private static _id = new LanguageIdentifier('moveLinesIndentMode', 7);
+	private static readonly _id = new LanguageIdentifier('moveLinesIndentMode', 7);
 	constructor(indentationRules: IndentationRule) {
 		super(IndentRulesMode._id);
 		this._register(LanguageConfigurationRegistry.register(this.getLanguageIdentifier(), {

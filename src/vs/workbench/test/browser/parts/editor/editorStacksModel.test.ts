@@ -506,7 +506,7 @@ suite('Editor Stacks Model', () => {
 		assert.equal(group.activeEditor, void 0);
 		assert.equal(events.closed[0].editor, input1);
 		assert.equal(events.closed[0].index, 0);
-		assert.equal(events.closed[0].pinned, true);
+		assert.equal(events.closed[0].replaced, false);
 
 		// Active && Preview
 		const input2 = input();
@@ -529,7 +529,7 @@ suite('Editor Stacks Model', () => {
 		assert.equal(group.activeEditor, void 0);
 		assert.equal(events.closed[1].editor, input2);
 		assert.equal(events.closed[1].index, 0);
-		assert.equal(events.closed[1].pinned, false);
+		assert.equal(events.closed[1].replaced, false);
 
 		group.closeEditor(input2);
 		assert.equal(group.count, 0);
@@ -748,6 +748,8 @@ suite('Editor Stacks Model', () => {
 		assert.equal(events.opened[2], input3);
 		assert.equal(events.closed[0].editor, input1);
 		assert.equal(events.closed[1].editor, input2);
+		assert.equal(events.closed[0].replaced, true);
+		assert.equal(events.closed[1].replaced, true);
 
 		const mru = group.getEditors(true);
 		assert.equal(mru[0], input3);
@@ -1499,6 +1501,13 @@ suite('Editor Stacks Model', () => {
 		previous = model.previous(true /* jump groups */);
 		assert.equal(previous.group, group1);
 		assert.equal(previous.editor, input3);
+
+		model.setActive(<EditorGroup>previous.group);
+		(<EditorGroup>next.group).setActive(<EditorInput>previous.editor);
+
+		const last = model.last();
+		assert.equal(last.group, group1);
+		assert.equal(last.editor, input3);
 	});
 
 	test('Stack - Multiple Editors - Navigation (in group)', function () {

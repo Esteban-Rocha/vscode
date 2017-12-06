@@ -10,7 +10,7 @@ import { Range } from 'vs/editor/common/core/range';
 import { Position } from 'vs/editor/common/core/position';
 import { LanguageIdentifier } from 'vs/editor/common/modes';
 import { IndentAction } from 'vs/editor/common/modes/languageConfiguration';
-import { TokenSelectionSupport } from 'vs/editor/contrib/smartSelect/common/tokenSelectionSupport';
+import { TokenSelectionSupport } from 'vs/editor/contrib/smartSelect/tokenSelectionSupport';
 import { MockMode } from 'vs/editor/test/common/mocks/mockMode';
 import { LanguageConfigurationRegistry } from 'vs/editor/common/modes/languageConfigurationRegistry';
 import { ModelServiceImpl } from 'vs/editor/common/services/modelServiceImpl';
@@ -18,7 +18,7 @@ import { TestConfigurationService } from 'vs/platform/configuration/test/common/
 
 class MockJSMode extends MockMode {
 
-	private static _id = new LanguageIdentifier('mockJSMode', 3);
+	private static readonly _id = new LanguageIdentifier('mockJSMode', 3);
 
 	constructor() {
 		super(MockJSMode._id);

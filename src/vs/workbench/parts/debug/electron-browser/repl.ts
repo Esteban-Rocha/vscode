@@ -16,14 +16,13 @@ import { isMacintosh } from 'vs/base/common/platform';
 import { CancellationToken } from 'vs/base/common/cancellation';
 import { KeyCode } from 'vs/base/common/keyCodes';
 import { ITree, ITreeOptions } from 'vs/base/parts/tree/browser/tree';
-import { Tree } from 'vs/base/parts/tree/browser/treeImpl';
-import { Context as SuggestContext } from 'vs/editor/contrib/suggest/browser/suggest';
-import { SuggestController } from 'vs/editor/contrib/suggest/browser/suggestController';
-import { IReadOnlyModel, ICommonCodeEditor } from 'vs/editor/common/editorCommon';
+import { Context as SuggestContext } from 'vs/editor/contrib/suggest/suggest';
+import { SuggestController } from 'vs/editor/contrib/suggest/suggestController';
+import { IReadOnlyModel } from 'vs/editor/common/editorCommon';
 import { EditorContextKeys } from 'vs/editor/common/editorContextKeys';
 import { Position } from 'vs/editor/common/core/position';
 import * as modes from 'vs/editor/common/modes';
-import { registerEditorAction, ServicesAccessor, EditorAction, EditorCommand, CommonEditorRegistry } from 'vs/editor/common/editorCommonExtensions';
+import { registerEditorAction, ServicesAccessor, EditorAction, EditorCommand, registerEditorCommand } from 'vs/editor/browser/editorExtensions';
 import { IModelService } from 'vs/editor/common/services/modelService';
 import { MenuId } from 'vs/platform/actions/common/actions';
 import { ServiceCollection } from 'vs/platform/instantiation/common/serviceCollection';
@@ -38,11 +37,11 @@ import { ClearReplAction } from 'vs/workbench/parts/debug/browser/debugActions';
 import { ReplHistory } from 'vs/workbench/parts/debug/common/replHistory';
 import { Panel } from 'vs/workbench/browser/panel';
 import { IPanelService } from 'vs/workbench/services/panel/common/panelService';
-import { IListService } from 'vs/platform/list/browser/listService';
-import { attachListStyler } from 'vs/platform/theme/common/styler';
 import { IEditorOptions } from 'vs/editor/common/config/editorOptions';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { clipboard } from 'electron';
+import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
+import { WorkbenchTree, IListService } from 'vs/platform/list/browser/listService';
 
 const $ = dom.$;
 
@@ -65,12 +64,12 @@ export interface IPrivateReplService {
 export class Repl extends Panel implements IPrivateReplService {
 	public _serviceBrand: any;
 
-	private static HALF_WIDTH_TYPICAL = 'n';
+	private static readonly HALF_WIDTH_TYPICAL = 'n';
 
 	private static HISTORY: ReplHistory;
-	private static REFRESH_DELAY = 500; // delay in ms to refresh the repl for new elements to show
-	private static REPL_INPUT_INITIAL_HEIGHT = 19;
-	private static REPL_INPUT_MAX_HEIGHT = 170;
+	private static readonly REFRESH_DELAY = 500; // delay in ms to refresh the repl for new elements to show
+	private static readonly REPL_INPUT_INITIAL_HEIGHT = 19;
+	private static readonly REPL_INPUT_MAX_HEIGHT = 170;
 
 	private tree: ITree;
 	private renderer: ReplExpressionsRenderer;
@@ -144,15 +143,12 @@ export class Repl extends Panel implements IPrivateReplService {
 		const controller = this.instantiationService.createInstance(ReplExpressionsController, new ReplExpressionsActionProvider(this.instantiationService), MenuId.DebugConsoleContext);
 		controller.toFocusOnClick = this.replInput;
 
-		this.tree = new Tree(this.treeContainer, {
+		this.tree = new WorkbenchTree(this.treeContainer, {
 			dataSource: new ReplExpressionsDataSource(),
 			renderer: this.renderer,
 			accessibilityProvider: new ReplExpressionsAccessibilityProvider(),
 			controller
-		}, replTreeOptions);
-
-		this.toUnbind.push(attachListStyler(this.tree, this.themeService));
-		this.toUnbind.push(this.listService.register(this.tree));
+		}, replTreeOptions, this.contextKeyService, this.listService, this.themeService);
 
 		if (!Repl.HISTORY) {
 			Repl.HISTORY = new ReplHistory(JSON.parse(this.storageService.get(HISTORY_STORAGE_KEY, StorageScope.WORKSPACE, '[]')));
@@ -331,7 +327,7 @@ class ReplHistoryPreviousAction extends EditorAction {
 		});
 	}
 
-	public run(accessor: ServicesAccessor, editor: ICommonCodeEditor): void | TPromise<void> {
+	public run(accessor: ServicesAccessor, editor: ICodeEditor): void | TPromise<void> {
 		accessor.get(IPrivateReplService).navigateHistory(true);
 	}
 }
@@ -355,7 +351,7 @@ class ReplHistoryNextAction extends EditorAction {
 		});
 	}
 
-	public run(accessor: ServicesAccessor, editor: ICommonCodeEditor): void | TPromise<void> {
+	public run(accessor: ServicesAccessor, editor: ICodeEditor): void | TPromise<void> {
 		accessor.get(IPrivateReplService).navigateHistory(false);
 	}
 }
@@ -375,7 +371,7 @@ class AcceptReplInputAction extends EditorAction {
 		});
 	}
 
-	public run(accessor: ServicesAccessor, editor: ICommonCodeEditor): void | TPromise<void> {
+	public run(accessor: ServicesAccessor, editor: ICodeEditor): void | TPromise<void> {
 		SuggestController.get(editor).acceptSelectedSuggestion();
 		accessor.get(IPrivateReplService).acceptReplInput();
 	}
@@ -392,7 +388,7 @@ export class ReplCopyAllAction extends EditorAction {
 		});
 	}
 
-	public run(accessor: ServicesAccessor, editor: ICommonCodeEditor): void | TPromise<void> {
+	public run(accessor: ServicesAccessor, editor: ICodeEditor): void | TPromise<void> {
 		clipboard.writeText(accessor.get(IPrivateReplService).getVisibleContent());
 	}
 }
@@ -403,7 +399,7 @@ registerEditorAction(AcceptReplInputAction);
 registerEditorAction(ReplCopyAllAction);
 
 const SuggestCommand = EditorCommand.bindToContribution<SuggestController>(SuggestController.get);
-CommonEditorRegistry.registerEditorCommand(new SuggestCommand({
+registerEditorCommand(new SuggestCommand({
 	id: 'repl.action.acceptSuggestion',
 	precondition: ContextKeyExpr.and(debug.CONTEXT_IN_DEBUG_REPL, SuggestContext.Visible),
 	handler: x => x.acceptSelectedSuggestion(),

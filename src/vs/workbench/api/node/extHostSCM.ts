@@ -16,6 +16,8 @@ import { MainContext, MainThreadSCMShape, SCMRawResource, SCMRawResourceSplice, 
 import { sortedDiff } from 'vs/base/common/arrays';
 import { comparePaths } from 'vs/base/common/comparers';
 import * as vscode from 'vscode';
+import { ISplice } from 'vs/base/common/sequence';
+import { log, LogLevel } from 'vs/platform/log/common/log';
 
 type ProviderHandle = number;
 type GroupHandle = number;
@@ -158,7 +160,6 @@ class ExtHostSourceControlResourceGroup implements vscode.SourceControlResourceG
 	private _resourceHandlePool: number = 0;
 	private _resourceStates: vscode.SourceControlResourceState[] = [];
 
-	private _resourceStatesRollingDisposables: { (): void }[] = [];
 	private _resourceStatesMap: Map<ResourceStateHandle, vscode.SourceControlResourceState> = new Map<ResourceStateHandle, vscode.SourceControlResourceState>();
 	private _resourceStatesCommandsMap: Map<ResourceStateHandle, vscode.Command> = new Map<ResourceStateHandle, vscode.Command>();
 
@@ -221,65 +222,63 @@ class ExtHostSourceControlResourceGroup implements vscode.SourceControlResourceG
 	_takeResourceStateSnapshot(): SCMRawResourceSplice[] {
 		const snapshot = [...this._resourceStates].sort(compareResourceStates);
 		const diffs = sortedDiff(this._resourceSnapshot, snapshot, compareResourceStates);
-		const handlesToDelete: number[] = [];
 
-		const splices = diffs.map(diff => {
-			const { start, deleteCount } = diff;
-			const handles: number[] = [];
+		const splices = diffs.map<ISplice<{ rawResource: SCMRawResource, handle: number }>>(diff => {
+			const toInsert = diff.toInsert.map(r => {
+				const handle = this._resourceHandlePool++;
+				this._resourceStatesMap.set(handle, r);
 
-			const rawResources = diff.inserted
-				.map(r => {
-					const handle = this._resourceHandlePool++;
-					this._resourceStatesMap.set(handle, r);
-					handles.push(handle);
+				const sourceUri = r.resourceUri.toString();
+				const iconPath = getIconPath(r.decorations);
+				const lightIconPath = r.decorations && getIconPath(r.decorations.light) || iconPath;
+				const darkIconPath = r.decorations && getIconPath(r.decorations.dark) || iconPath;
+				const icons: string[] = [];
 
-					const sourceUri = r.resourceUri.toString();
-					const iconPath = getIconPath(r.decorations);
-					const lightIconPath = r.decorations && getIconPath(r.decorations.light) || iconPath;
-					const darkIconPath = r.decorations && getIconPath(r.decorations.dark) || iconPath;
-					const icons: string[] = [];
+				if (r.command) {
+					this._resourceStatesCommandsMap.set(handle, r.command);
+				}
 
-					if (r.command) {
-						this._resourceStatesCommandsMap.set(handle, r.command);
-					}
+				if (lightIconPath || darkIconPath) {
+					icons.push(lightIconPath);
+				}
 
-					if (lightIconPath || darkIconPath) {
-						icons.push(lightIconPath);
-					}
+				if (darkIconPath !== lightIconPath) {
+					icons.push(darkIconPath);
+				}
 
-					if (darkIconPath !== lightIconPath) {
-						icons.push(darkIconPath);
-					}
+				const tooltip = (r.decorations && r.decorations.tooltip) || '';
+				const strikeThrough = r.decorations && !!r.decorations.strikeThrough;
+				const faded = r.decorations && !!r.decorations.faded;
 
-					const tooltip = (r.decorations && r.decorations.tooltip) || '';
-					const strikeThrough = r.decorations && !!r.decorations.strikeThrough;
-					const faded = r.decorations && !!r.decorations.faded;
+				const source = r.decorations && r.decorations.source || undefined;
+				const letter = r.decorations && r.decorations.letter || undefined;
+				const color = r.decorations && r.decorations.color || undefined;
 
-					const source = r.decorations && r.decorations.source || undefined;
-					const letter = r.decorations && r.decorations.letter || undefined;
-					const color = r.decorations && r.decorations.color || undefined;
+				const rawResource = [handle, sourceUri, icons, tooltip, strikeThrough, faded, source, letter, color] as SCMRawResource;
 
-					return [handle, sourceUri, icons, tooltip, strikeThrough, faded, source, letter, color] as SCMRawResource;
-				});
+				return { rawResource, handle };
+			});
 
-			handlesToDelete.push(...this._handlesSnapshot.splice(start, deleteCount, ...handles));
-
-			return [start, deleteCount, rawResources] as SCMRawResourceSplice;
+			return { start: diff.start, deleteCount: diff.deleteCount, toInsert };
 		});
 
-		const disposable = () => handlesToDelete.forEach(handle => {
-			this._resourceStatesMap.delete(handle);
-			this._resourceStatesCommandsMap.delete(handle);
-		});
+		const rawResourceSplices = splices
+			.map(({ start, deleteCount, toInsert }) => [start, deleteCount, toInsert.map(i => i.rawResource)] as SCMRawResourceSplice);
 
-		this._resourceStatesRollingDisposables.push(disposable);
+		const reverseSplices = splices.reverse();
 
-		while (this._resourceStatesRollingDisposables.length >= 10) {
-			this._resourceStatesRollingDisposables.shift()();
+		for (const { start, deleteCount, toInsert } of reverseSplices) {
+			const handles = toInsert.map(i => i.handle);
+			const handlesToDelete = this._handlesSnapshot.splice(start, deleteCount, ...handles);
+
+			for (const handle of handlesToDelete) {
+				this._resourceStatesMap.delete(handle);
+				this._resourceStatesCommandsMap.delete(handle);
+			}
 		}
 
 		this._resourceSnapshot = snapshot;
-		return splices;
+		return rawResourceSplices;
 	}
 
 	dispose(): void {
@@ -488,6 +487,7 @@ export class ExtHostSCM {
 		});
 	}
 
+	@log(LogLevel.Trace, 'ExtHostSCM', (msg, extension, id, label, rootUri) => `${msg}(${extension.id}, ${id}, ${label}, ${rootUri})`)
 	createSourceControl(extension: IExtensionDescription, id: string, label: string, rootUri: vscode.Uri | undefined): vscode.SourceControl {
 		const handle = ExtHostSCM._handlePool++;
 		const sourceControl = new ExtHostSourceControl(this._proxy, this._commands, id, label, rootUri);
@@ -501,6 +501,7 @@ export class ExtHostSCM {
 	}
 
 	// Deprecated
+	@log(LogLevel.Trace, 'ExtHostSCM', (msg, extension) => `${msg}(${extension.id})`)
 	getLastInputBox(extension: IExtensionDescription): ExtHostSCMInputBox {
 		const sourceControls = this._sourceControlsByExtension.get(extension.id);
 		const sourceControl = sourceControls && sourceControls[sourceControls.length - 1];
@@ -509,6 +510,7 @@ export class ExtHostSCM {
 		return inputBox;
 	}
 
+	@log(LogLevel.Trace, 'ExtHostSCM', (msg, handle, uri) => `${msg}(${handle}, ${uri})`)
 	$provideOriginalResource(sourceControlHandle: number, uri: URI): TPromise<URI> {
 		const sourceControl = this._sourceControls.get(sourceControlHandle);
 
@@ -522,6 +524,7 @@ export class ExtHostSCM {
 		});
 	}
 
+	@log(LogLevel.Trace, 'ExtHostSCM', (msg, handle) => `${msg}(${handle})`)
 	$onInputBoxValueChange(sourceControlHandle: number, value: string): TPromise<void> {
 		const sourceControl = this._sourceControls.get(sourceControlHandle);
 
@@ -533,6 +536,7 @@ export class ExtHostSCM {
 		return TPromise.as(null);
 	}
 
+	@log(LogLevel.Trace, 'ExtHostSCM', (msg, h1, h2, h3) => `${msg}(${h1}, ${h2}, ${h3})`)
 	async $executeResourceCommand(sourceControlHandle: number, groupHandle: number, handle: number): TPromise<void> {
 		const sourceControl = this._sourceControls.get(sourceControlHandle);
 

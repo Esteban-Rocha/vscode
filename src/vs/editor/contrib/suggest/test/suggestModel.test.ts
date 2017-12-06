@@ -10,10 +10,10 @@ import URI from 'vs/base/common/uri';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { Model } from 'vs/editor/common/model/model';
-import { ICommonCodeEditor, Handler } from 'vs/editor/common/editorCommon';
+import { Handler } from 'vs/editor/common/editorCommon';
 import { ISuggestSupport, ISuggestResult, SuggestRegistry, SuggestTriggerKind } from 'vs/editor/common/modes';
-import { SuggestModel, LineContext } from 'vs/editor/contrib/suggest/browser/suggestModel';
-import { MockCodeEditor, MockScopeLocation } from 'vs/editor/test/common/mocks/mockCodeEditor';
+import { SuggestModel, LineContext } from 'vs/editor/contrib/suggest/suggestModel';
+import { TestCodeEditor, MockScopeLocation } from 'vs/editor/test/browser/testCodeEditor';
 import { ServiceCollection } from 'vs/platform/instantiation/common/serviceCollection';
 import { InstantiationService } from 'vs/platform/instantiation/common/instantiationService';
 import { IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
@@ -22,8 +22,10 @@ import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { NullTelemetryService } from 'vs/platform/telemetry/common/telemetryUtils';
 import { EditOperation } from 'vs/editor/common/core/editOperation';
 import { Range } from 'vs/editor/common/core/range';
+import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
+import { CoreEditingCommands } from 'vs/editor/browser/controller/coreCommands';
 
-function createMockEditor(model: Model): MockCodeEditor {
+function createMockEditor(model: Model): TestCodeEditor {
 	const contextKeyService = new MockContextKeyService();
 	const telemetryService = NullTelemetryService;
 	const instantiationService = new InstantiationService(new ServiceCollection(
@@ -31,7 +33,7 @@ function createMockEditor(model: Model): MockCodeEditor {
 		[ITelemetryService, telemetryService]
 	));
 
-	const editor = new MockCodeEditor(new MockScopeLocation(), {}, instantiationService, contextKeyService);
+	const editor = new TestCodeEditor(new MockScopeLocation(), {}, instantiationService, contextKeyService);
 	editor.setModel(model);
 	return editor;
 }
@@ -70,8 +72,8 @@ suite('SuggestModel - TriggerAndCancelOracle', function () {
 
 
 	const alwaysEmptySupport: ISuggestSupport = {
-		provideCompletionItems(doc, pos) {
-			return <ISuggestResult>{
+		provideCompletionItems(doc, pos): ISuggestResult {
+			return {
 				incomplete: false,
 				suggestions: []
 			};
@@ -79,8 +81,8 @@ suite('SuggestModel - TriggerAndCancelOracle', function () {
 	};
 
 	const alwaysSomethingSupport: ISuggestSupport = {
-		provideCompletionItems(doc, pos) {
-			return <ISuggestResult>{
+		provideCompletionItems(doc, pos): ISuggestResult {
+			return {
 				incomplete: false,
 				suggestions: [{
 					label: doc.getWordUntilPosition(pos).word,
@@ -100,7 +102,7 @@ suite('SuggestModel - TriggerAndCancelOracle', function () {
 		disposables.push(model);
 	});
 
-	function withOracle(callback: (model: SuggestModel, editor: ICommonCodeEditor) => any): TPromise<any> {
+	function withOracle(callback: (model: SuggestModel, editor: ICodeEditor) => any): TPromise<any> {
 
 		return new TPromise((resolve, reject) => {
 			const editor = createMockEditor(model);
@@ -222,9 +224,8 @@ suite('SuggestModel - TriggerAndCancelOracle', function () {
 	test('#17400: Keep filtering suggestModel.ts after space', function () {
 
 		disposables.push(SuggestRegistry.register({ scheme: 'test' }, {
-			provideCompletionItems(doc, pos) {
-				return <ISuggestResult>{
-					currentWord: '',
+			provideCompletionItems(doc, pos): ISuggestResult {
+				return {
 					incomplete: false,
 					suggestions: [{
 						label: 'My Table',
@@ -272,9 +273,8 @@ suite('SuggestModel - TriggerAndCancelOracle', function () {
 	test('#21484: Trigger character always force a new completion session', function () {
 
 		disposables.push(SuggestRegistry.register({ scheme: 'test' }, {
-			provideCompletionItems(doc, pos) {
-				return <ISuggestResult>{
-					currentWord: '',
+			provideCompletionItems(doc, pos): ISuggestResult {
+				return {
 					incomplete: false,
 					suggestions: [{
 						label: 'foo.bar',
@@ -288,9 +288,8 @@ suite('SuggestModel - TriggerAndCancelOracle', function () {
 
 		disposables.push(SuggestRegistry.register({ scheme: 'test' }, {
 			triggerCharacters: ['.'],
-			provideCompletionItems(doc, pos) {
-				return <ISuggestResult>{
-					currentWord: '',
+			provideCompletionItems(doc, pos): ISuggestResult {
+				return {
 					incomplete: false,
 					suggestions: [{
 						label: 'boom',
@@ -383,8 +382,8 @@ suite('SuggestModel - TriggerAndCancelOracle', function () {
 	test('Incomplete suggestion results cause re-triggering when typing w/o further context, #28400 (1/2)', function () {
 
 		disposables.push(SuggestRegistry.register({ scheme: 'test' }, {
-			provideCompletionItems(doc, pos) {
-				return <ISuggestResult>{
+			provideCompletionItems(doc, pos): ISuggestResult {
+				return {
 					incomplete: true,
 					suggestions: [{
 						label: 'foo',
@@ -420,8 +419,8 @@ suite('SuggestModel - TriggerAndCancelOracle', function () {
 	test('Incomplete suggestion results cause re-triggering when typing w/o further context, #28400 (2/2)', function () {
 
 		disposables.push(SuggestRegistry.register({ scheme: 'test' }, {
-			provideCompletionItems(doc, pos) {
-				return <ISuggestResult>{
+			provideCompletionItems(doc, pos): ISuggestResult {
+				return {
 					incomplete: true,
 					suggestions: [{
 						label: 'foo;',
@@ -464,11 +463,10 @@ suite('SuggestModel - TriggerAndCancelOracle', function () {
 		let triggerCharacter = '';
 		disposables.push(SuggestRegistry.register({ scheme: 'test' }, {
 			triggerCharacters: ['.'],
-			provideCompletionItems(doc, pos, context) {
+			provideCompletionItems(doc, pos, context): ISuggestResult {
 				assert.equal(context.triggerKind, SuggestTriggerKind.TriggerCharacter);
 				triggerCharacter = context.triggerCharacter;
-				return <ISuggestResult>{
-					currentWord: '',
+				return {
 					incomplete: false,
 					suggestions: [
 						{
@@ -497,8 +495,8 @@ suite('SuggestModel - TriggerAndCancelOracle', function () {
 
 	test('Mac press and hold accent character insertion does not update suggestions, #35269', function () {
 		disposables.push(SuggestRegistry.register({ scheme: 'test' }, {
-			provideCompletionItems(doc, pos) {
-				return <ISuggestResult>{
+			provideCompletionItems(doc, pos): ISuggestResult {
+				return {
 					incomplete: true,
 					suggestions: [{
 						label: 'abc',
@@ -534,6 +532,35 @@ suite('SuggestModel - TriggerAndCancelOracle', function () {
 					assert.equal(event.completionModel.items[0].suggestion.label, 'äbc');
 
 				});
+			});
+		});
+	});
+
+	test('Backspace should not always cancel code completion, #36491', function () {
+		disposables.push(SuggestRegistry.register({ scheme: 'test' }, alwaysSomethingSupport));
+
+		return withOracle(async (model, editor) => {
+			await assertEvent(model.onDidSuggest, () => {
+				editor.setPosition({ lineNumber: 1, column: 4 });
+				editor.trigger('keyboard', Handler.Type, { text: 'd' });
+
+			}, event => {
+				assert.equal(event.auto, true);
+				assert.equal(event.completionModel.items.length, 1);
+				const [first] = event.completionModel.items;
+
+				assert.equal(first.support, alwaysSomethingSupport);
+			});
+
+			await assertEvent(model.onDidSuggest, () => {
+				CoreEditingCommands.DeleteLeft.runEditorCommand(null, editor, null);
+
+			}, event => {
+				assert.equal(event.auto, true);
+				assert.equal(event.completionModel.items.length, 1);
+				const [first] = event.completionModel.items;
+
+				assert.equal(first.support, alwaysSomethingSupport);
 			});
 		});
 	});

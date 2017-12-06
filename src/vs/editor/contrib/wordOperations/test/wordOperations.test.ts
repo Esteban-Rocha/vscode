@@ -7,8 +7,7 @@
 import * as assert from 'assert';
 import { Position } from 'vs/editor/common/core/position';
 import { Selection } from 'vs/editor/common/core/selection';
-import { ICommonCodeEditor } from 'vs/editor/common/editorCommon';
-import { withMockCodeEditor } from 'vs/editor/test/common/mocks/mockCodeEditor';
+import { withTestCodeEditor } from 'vs/editor/test/browser/testCodeEditor';
 import {
 	CursorWordLeft, CursorWordLeftSelect, CursorWordStartLeft,
 	CursorWordEndLeft, CursorWordStartLeftSelect, CursorWordEndLeftSelect,
@@ -16,8 +15,9 @@ import {
 	CursorWordStartRightSelect, CursorWordEndRightSelect, CursorWordRightSelect,
 	DeleteWordLeft, DeleteWordStartLeft, DeleteWordEndLeft,
 	DeleteWordRight, DeleteWordStartRight, DeleteWordEndRight
-} from 'vs/editor/contrib/wordOperations/common/wordOperations';
-import { EditorCommand } from 'vs/editor/common/editorCommonExtensions';
+} from 'vs/editor/contrib/wordOperations/wordOperations';
+import { EditorCommand } from 'vs/editor/browser/editorExtensions';
+import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
 suite('WordOperations', () => {
 
@@ -40,48 +40,48 @@ suite('WordOperations', () => {
 	const _deleteWordStartRight = new DeleteWordStartRight();
 	const _deleteWordEndRight = new DeleteWordEndRight();
 
-	function runEditorCommand(editor: ICommonCodeEditor, command: EditorCommand): void {
+	function runEditorCommand(editor: ICodeEditor, command: EditorCommand): void {
 		command.runEditorCommand(null, editor, null);
 	}
-	function moveWordLeft(editor: ICommonCodeEditor, inSelectionMode: boolean = false): void {
+	function moveWordLeft(editor: ICodeEditor, inSelectionMode: boolean = false): void {
 		runEditorCommand(editor, inSelectionMode ? _cursorWordLeftSelect : _cursorWordLeft);
 	}
-	function moveWordStartLeft(editor: ICommonCodeEditor, inSelectionMode: boolean = false): void {
+	function moveWordStartLeft(editor: ICodeEditor, inSelectionMode: boolean = false): void {
 		runEditorCommand(editor, inSelectionMode ? _cursorWordStartLeftSelect : _cursorWordStartLeft);
 	}
-	function moveWordEndLeft(editor: ICommonCodeEditor, inSelectionMode: boolean = false): void {
+	function moveWordEndLeft(editor: ICodeEditor, inSelectionMode: boolean = false): void {
 		runEditorCommand(editor, inSelectionMode ? _cursorWordEndLeftSelect : _cursorWordEndLeft);
 	}
-	function moveWordRight(editor: ICommonCodeEditor, inSelectionMode: boolean = false): void {
+	function moveWordRight(editor: ICodeEditor, inSelectionMode: boolean = false): void {
 		runEditorCommand(editor, inSelectionMode ? _cursorWordRightSelect : _cursorWordRight);
 	}
-	function moveWordEndRight(editor: ICommonCodeEditor, inSelectionMode: boolean = false): void {
+	function moveWordEndRight(editor: ICodeEditor, inSelectionMode: boolean = false): void {
 		runEditorCommand(editor, inSelectionMode ? _cursorWordEndRightSelect : _cursorWordEndRight);
 	}
-	function moveWordStartRight(editor: ICommonCodeEditor, inSelectionMode: boolean = false): void {
+	function moveWordStartRight(editor: ICodeEditor, inSelectionMode: boolean = false): void {
 		runEditorCommand(editor, inSelectionMode ? _cursorWordStartRightSelect : _cursorWordStartRight);
 	}
-	function deleteWordLeft(editor: ICommonCodeEditor): void {
+	function deleteWordLeft(editor: ICodeEditor): void {
 		runEditorCommand(editor, _deleteWordLeft);
 	}
-	function deleteWordStartLeft(editor: ICommonCodeEditor): void {
+	function deleteWordStartLeft(editor: ICodeEditor): void {
 		runEditorCommand(editor, _deleteWordStartLeft);
 	}
-	function deleteWordEndLeft(editor: ICommonCodeEditor): void {
+	function deleteWordEndLeft(editor: ICodeEditor): void {
 		runEditorCommand(editor, _deleteWordEndLeft);
 	}
-	function deleteWordRight(editor: ICommonCodeEditor): void {
+	function deleteWordRight(editor: ICodeEditor): void {
 		runEditorCommand(editor, _deleteWordRight);
 	}
-	function deleteWordStartRight(editor: ICommonCodeEditor): void {
+	function deleteWordStartRight(editor: ICodeEditor): void {
 		runEditorCommand(editor, _deleteWordStartRight);
 	}
-	function deleteWordEndRight(editor: ICommonCodeEditor): void {
+	function deleteWordEndRight(editor: ICodeEditor): void {
 		runEditorCommand(editor, _deleteWordEndRight);
 	}
 
 	test('move word left', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'    \tMy First Line\t ',
 			'\tMy Second Line',
 			'    Third Line🐶',
@@ -118,7 +118,7 @@ suite('WordOperations', () => {
 	});
 
 	test('move word left selection', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'    \tMy First Line\t ',
 			'\tMy Second Line',
 			'    Third Line🐶',
@@ -132,7 +132,7 @@ suite('WordOperations', () => {
 	});
 
 	test('issue #832: moveWordLeft', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'   /* Just some   more   text a+= 3 +5-3 + 7 */  '
 		], {}, (editor, _) => {
 			editor.setPosition(new Position(1, 50));
@@ -156,7 +156,7 @@ suite('WordOperations', () => {
 	});
 
 	test('moveWordStartLeft', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'   /* Just some   more   text a+= 3 +5-3 + 7 */  '
 		], {}, (editor, _) => {
 			editor.setPosition(new Position(1, 50));
@@ -180,7 +180,7 @@ suite('WordOperations', () => {
 	});
 
 	test('moveWordEndLeft', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'   /* Just some   more   text a+= 3 +5-3 + 7 */  '
 		], {}, (editor, _) => {
 			editor.setPosition(new Position(1, 50));
@@ -205,7 +205,7 @@ suite('WordOperations', () => {
 	});
 
 	test('move word right', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'    \tMy First Line\t ',
 			'\tMy Second Line',
 			'    Third Line🐶',
@@ -240,7 +240,7 @@ suite('WordOperations', () => {
 	});
 
 	test('move word right selection', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'    \tMy First Line\t ',
 			'\tMy Second Line',
 			'    Third Line🐶',
@@ -254,7 +254,7 @@ suite('WordOperations', () => {
 	});
 
 	test('issue #832: moveWordRight', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'   /* Just some   more   text a+= 3 +5-3 + 7 */  '
 		], {}, (editor, _) => {
 			editor.setPosition(new Position(1, 1));
@@ -280,7 +280,7 @@ suite('WordOperations', () => {
 	});
 
 	test('moveWordEndRight', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'   /* Just some   more   text a+= 3 +5-3 + 7 */  '
 		], {}, (editor, _) => {
 			editor.setPosition(new Position(1, 1));
@@ -306,7 +306,7 @@ suite('WordOperations', () => {
 	});
 
 	test('moveWordStartRight', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'   /* Just some   more   text a+= 3 +5-3 + 7 */  '
 		], {}, (editor, _) => {
 			editor.setPosition(new Position(1, 1));
@@ -331,7 +331,7 @@ suite('WordOperations', () => {
 	});
 
 	test('delete word left for non-empty selection', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'    \tMy First Line\t ',
 			'\tMy Second Line',
 			'    Third Line🐶',
@@ -347,7 +347,7 @@ suite('WordOperations', () => {
 	});
 
 	test('delete word left for caret at beginning of document', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'    \tMy First Line\t ',
 			'\tMy Second Line',
 			'    Third Line🐶',
@@ -363,7 +363,7 @@ suite('WordOperations', () => {
 	});
 
 	test('delete word left for caret at end of whitespace', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'    \tMy First Line\t ',
 			'\tMy Second Line',
 			'    Third Line🐶',
@@ -379,7 +379,7 @@ suite('WordOperations', () => {
 	});
 
 	test('delete word left for caret just behind a word', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'    \tMy First Line\t ',
 			'\tMy Second Line',
 			'    Third Line🐶',
@@ -395,7 +395,7 @@ suite('WordOperations', () => {
 	});
 
 	test('delete word left for caret inside of a word', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'    \tMy First Line\t ',
 			'\tMy Second Line',
 			'    Third Line🐶',
@@ -411,7 +411,7 @@ suite('WordOperations', () => {
 	});
 
 	test('delete word right for non-empty selection', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'    \tMy First Line\t ',
 			'\tMy Second Line',
 			'    Third Line🐶',
@@ -427,7 +427,7 @@ suite('WordOperations', () => {
 	});
 
 	test('delete word right for caret at end of document', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'    \tMy First Line\t ',
 			'\tMy Second Line',
 			'    Third Line🐶',
@@ -443,7 +443,7 @@ suite('WordOperations', () => {
 	});
 
 	test('delete word right for caret at beggining of whitespace', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'    \tMy First Line\t ',
 			'\tMy Second Line',
 			'    Third Line🐶',
@@ -459,7 +459,7 @@ suite('WordOperations', () => {
 	});
 
 	test('delete word right for caret just before a word', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'    \tMy First Line\t ',
 			'\tMy Second Line',
 			'    Third Line🐶',
@@ -475,7 +475,7 @@ suite('WordOperations', () => {
 	});
 
 	test('delete word right for caret inside of a word', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'    \tMy First Line\t ',
 			'\tMy Second Line',
 			'    Third Line🐶',
@@ -491,7 +491,7 @@ suite('WordOperations', () => {
 	});
 
 	test('issue #832: deleteWordLeft', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'   /* Just some text a+= 3 +5 */  '
 		], {}, (editor, _) => {
 			const model = editor.getModel();
@@ -512,7 +512,7 @@ suite('WordOperations', () => {
 	});
 
 	test('deleteWordStartLeft', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'   /* Just some text a+= 3 +5 */  '
 		], {}, (editor, _) => {
 			const model = editor.getModel();
@@ -533,7 +533,7 @@ suite('WordOperations', () => {
 	});
 
 	test('deleteWordEndLeft', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'   /* Just some text a+= 3 +5 */  '
 		], {}, (editor, _) => {
 			const model = editor.getModel();
@@ -553,7 +553,7 @@ suite('WordOperations', () => {
 	});
 
 	test('issue #24947', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'{',
 			'}'
 		], {}, (editor, _) => {
@@ -562,7 +562,7 @@ suite('WordOperations', () => {
 			deleteWordLeft(editor); assert.equal(model.getLineContent(1), '{}');
 		});
 
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'{',
 			'}'
 		], {}, (editor, _) => {
@@ -571,7 +571,7 @@ suite('WordOperations', () => {
 			deleteWordStartLeft(editor); assert.equal(model.getLineContent(1), '{}');
 		});
 
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'{',
 			'}'
 		], {}, (editor, _) => {
@@ -582,7 +582,7 @@ suite('WordOperations', () => {
 	});
 
 	test('issue #832: deleteWordRight', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'   /* Just some text a+= 3 +5-3 */  '
 		], {}, (editor, _) => {
 			const model = editor.getModel();
@@ -604,7 +604,7 @@ suite('WordOperations', () => {
 	});
 
 	test('issue #3882: deleteWordRight', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'public void Add( int x,',
 			'                 int y )'
 		], {}, (editor, _) => {
@@ -615,7 +615,7 @@ suite('WordOperations', () => {
 	});
 
 	test('issue #3882: deleteWordStartRight', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'public void Add( int x,',
 			'                 int y )'
 		], {}, (editor, _) => {
@@ -626,7 +626,7 @@ suite('WordOperations', () => {
 	});
 
 	test('issue #3882: deleteWordEndRight', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'public void Add( int x,',
 			'                 int y )'
 		], {}, (editor, _) => {
@@ -637,7 +637,7 @@ suite('WordOperations', () => {
 	});
 
 	test('deleteWordStartRight', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'   /* Just some text a+= 3 +5-3 */  '
 		], {}, (editor, _) => {
 			const model = editor.getModel();
@@ -660,7 +660,7 @@ suite('WordOperations', () => {
 	});
 
 	test('deleteWordEndRight', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'   /* Just some text a+= 3 +5-3 */  '
 		], {}, (editor, _) => {
 			const model = editor.getModel();
@@ -681,7 +681,7 @@ suite('WordOperations', () => {
 	});
 
 	test('issue #3882 (1): Ctrl+Delete removing entire line when used at the end of line', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'A line with text.',
 			'   And another one'
 		], {}, (editor, _) => {
@@ -692,7 +692,7 @@ suite('WordOperations', () => {
 	});
 
 	test('issue #3882 (2): Ctrl+Delete removing entire line when used at the end of line', () => {
-		withMockCodeEditor([
+		withTestCodeEditor([
 			'A line with text.',
 			'   And another one'
 		], {}, (editor, _) => {

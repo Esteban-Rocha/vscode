@@ -11,11 +11,11 @@ import * as browser from 'vs/base/browser/browser';
 import * as dom from 'vs/base/browser/dom';
 import { IEditorContribution } from 'vs/editor/common/editorCommon';
 import { ICodeEditor, IOverlayWidget, IOverlayWidgetPosition, OverlayWidgetPositionPreference } from 'vs/editor/browser/editorBrowser';
-import { registerEditorContribution } from 'vs/editor/browser/editorBrowserExtensions';
+import { registerEditorContribution } from 'vs/editor/browser/editorExtensions';
 
 export class IPadShowKeyboard implements IEditorContribution {
 
-	private static ID = 'editor.contrib.iPadShowKeyboard';
+	private static readonly ID = 'editor.contrib.iPadShowKeyboard';
 
 	private editor: ICodeEditor;
 	private widget: ShowKeyboardWidget;
@@ -61,7 +61,7 @@ export class IPadShowKeyboard implements IEditorContribution {
 
 class ShowKeyboardWidget implements IOverlayWidget {
 
-	private static ID = 'editor.contrib.ShowKeyboardWidget';
+	private static readonly ID = 'editor.contrib.ShowKeyboardWidget';
 
 	private editor: ICodeEditor;
 

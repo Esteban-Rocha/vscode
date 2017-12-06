@@ -65,7 +65,7 @@ export class BackupMainService implements IBackupMainService {
 	}
 
 	private getHotExitConfig(): string {
-		const config = this.configurationService.getConfiguration<IFilesConfiguration>();
+		const config = this.configurationService.getValue<IFilesConfiguration>();
 
 		return (config && config.files && config.files.hotExit) || HotExitConfiguration.ON_EXIT;
 	}
@@ -309,7 +309,7 @@ export class BackupMainService implements IBackupMainService {
 				fs.mkdirSync(this.backupHome);
 			}
 
-			fs.writeFileSync(this.workspacesJsonPath, JSON.stringify(this.backups));
+			extfs.writeFileAndFlushSync(this.workspacesJsonPath, JSON.stringify(this.backups));
 		} catch (ex) {
 			this.logService.error(`Backup: Could not save workspaces.json: ${ex.toString()}`);
 		}

@@ -5,7 +5,7 @@
 'use strict';
 
 import * as assert from 'assert';
-import { Scanner, TokenType, SnippetParser, Text, Placeholder, Variable, Marker, TextmateSnippet, Choice, FormatString, Transform } from 'vs/editor/contrib/snippet/browser/snippetParser';
+import { Scanner, TokenType, SnippetParser, Text, Placeholder, Variable, Marker, TextmateSnippet, Choice, FormatString, Transform } from 'vs/editor/contrib/snippet/snippetParser';
 
 suite('SnippetParser', () => {
 
@@ -242,6 +242,12 @@ suite('SnippetParser', () => {
 
 	test('No way to escape forward slash in snippet regex #36715', function () {
 		assertMarker('${TM_DIRECTORY/src\\//$1/}', Variable);
+	});
+
+	test('No way to escape forward slash in snippet format section #37562', function () {
+		assertMarker('${TM_SELECTED_TEXT/a/\\/$1/g}', Variable);
+		assertMarker('${TM_SELECTED_TEXT/a/in\\/$1ner/g}', Variable);
+		assertMarker('${TM_SELECTED_TEXT/a/end\\//g}', Variable);
 	});
 
 	test('Parser, placeholder with choice', () => {

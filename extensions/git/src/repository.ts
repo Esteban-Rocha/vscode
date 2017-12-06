@@ -5,7 +5,7 @@
 
 'use strict';
 
-import { Uri, Command, EventEmitter, Event, scm, SourceControl, SourceControlInputBox, SourceControlResourceGroup, SourceControlResourceState, SourceControlResourceDecorations, Disposable, ProgressLocation, window, workspace, WorkspaceEdit, ThemeColor, DecorationData } from 'vscode';
+import { Uri, Command, EventEmitter, Event, scm, SourceControl, SourceControlInputBox, SourceControlResourceGroup, SourceControlResourceState, SourceControlResourceDecorations, Disposable, ProgressLocation, window, workspace, WorkspaceEdit, ThemeColor, DecorationData, Memento } from 'vscode';
 import { Repository as BaseRepository, Ref, Branch, Remote, Commit, GitErrorCodes, Stash, RefType, GitError } from './git';
 import { anyEvent, filterEvent, eventToPromise, dispose, find } from './util';
 import { memoize, throttle, debounce } from './decorators';
@@ -171,10 +171,8 @@ export class Resource implements SourceControlResourceState {
 	}
 
 	get decorations(): SourceControlResourceDecorations {
-		// TODO@joh, still requires restart/redraw in the SCM viewlet
-		const decorations = workspace.getConfiguration().get<boolean>('git.decorations.enabled');
-		const light = !decorations ? { iconPath: this.getIconPath('light') } : undefined;
-		const dark = !decorations ? { iconPath: this.getIconPath('dark') } : undefined;
+		const light = this._useIcons ? { iconPath: this.getIconPath('light') } : undefined;
+		const dark = this._useIcons ? { iconPath: this.getIconPath('dark') } : undefined;
 		const tooltip = this.tooltip;
 		const strikeThrough = this.strikeThrough;
 		const faded = this.faded;
@@ -275,6 +273,7 @@ export class Resource implements SourceControlResourceState {
 		private _resourceGroupType: ResourceGroupType,
 		private _resourceUri: Uri,
 		private _type: Status,
+		private _useIcons: boolean,
 		private _renameResourceUri?: Uri
 	) { }
 }
@@ -296,11 +295,13 @@ export enum Operation {
 	Stage = 'Stage',
 	GetCommitTemplate = 'GetCommitTemplate',
 	DeleteBranch = 'DeleteBranch',
+	RenameBranch = 'RenameBranch',
 	Merge = 'Merge',
 	Ignore = 'Ignore',
 	Tag = 'Tag',
 	Stash = 'Stash',
-	CheckIgnore = 'CheckIgnore'
+	CheckIgnore = 'CheckIgnore',
+	LSTree = 'LSTree'
 }
 
 function isReadOnly(operation: Operation): boolean {
@@ -308,6 +309,7 @@ function isReadOnly(operation: Operation): boolean {
 		case Operation.Show:
 		case Operation.GetCommitTemplate:
 		case Operation.CheckIgnore:
+		case Operation.LSTree:
 			return true;
 		default:
 			return false;
@@ -318,6 +320,8 @@ function shouldShowProgress(operation: Operation): boolean {
 	switch (operation) {
 		case Operation.Fetch:
 		case Operation.CheckIgnore:
+		case Operation.LSTree:
+		case Operation.Show:
 			return false;
 		default:
 			return true;
@@ -369,10 +373,16 @@ export interface CommitOptions {
 	amend?: boolean;
 	signoff?: boolean;
 	signCommit?: boolean;
+	defaultMsg?: string;
 }
 
 export interface GitResourceGroup extends SourceControlResourceGroup {
 	resourceStates: Resource[];
+}
+
+export interface OperationResult {
+	operation: Operation;
+	error: any;
 }
 
 export class Repository implements Disposable {
@@ -392,8 +402,8 @@ export class Repository implements Disposable {
 	private _onRunOperation = new EventEmitter<Operation>();
 	readonly onRunOperation: Event<Operation> = this._onRunOperation.event;
 
-	private _onDidRunOperation = new EventEmitter<Operation>();
-	readonly onDidRunOperation: Event<Operation> = this._onDidRunOperation.event;
+	private _onDidRunOperation = new EventEmitter<OperationResult>();
+	readonly onDidRunOperation: Event<OperationResult> = this._onDidRunOperation.event;
 
 	@memoize
 	get onDidChangeOperations(): Event<void> {
@@ -456,7 +466,8 @@ export class Repository implements Disposable {
 	private disposables: Disposable[] = [];
 
 	constructor(
-		private readonly repository: BaseRepository
+		private readonly repository: BaseRepository,
+		globalState: Memento
 	) {
 		const fsWatcher = workspace.createFileSystemWatcher('**');
 		this.disposables.push(fsWatcher);
@@ -486,7 +497,7 @@ export class Repository implements Disposable {
 		this.disposables.push(this.indexGroup);
 		this.disposables.push(this.workingTreeGroup);
 
-		this.disposables.push(new AutoFetcher(this));
+		this.disposables.push(new AutoFetcher(this, globalState));
 
 		const statusBar = new StatusBarCommands(this);
 		this.disposables.push(statusBar);
@@ -599,6 +610,10 @@ export class Repository implements Disposable {
 		await this.run(Operation.DeleteBranch, () => this.repository.deleteBranch(name, force));
 	}
 
+	async renameBranch(name: string): Promise<void> {
+		await this.run(Operation.RenameBranch, () => this.repository.renameBranch(name));
+	}
+
 	async merge(ref: string): Promise<void> {
 		await this.run(Operation.Merge, () => this.repository.merge(ref));
 	}
@@ -679,16 +694,36 @@ export class Repository implements Disposable {
 			const configFiles = workspace.getConfiguration('files', Uri.file(filePath));
 			const encoding = configFiles.get<string>('encoding');
 
-			return await this.repository.buffer(`${ref}:${relativePath}`, encoding);
+			// TODO@joao: Resource config api
+			return await this.repository.bufferString(`${ref}:${relativePath}`, encoding);
 		});
+	}
+
+	async buffer(ref: string, filePath: string): Promise<Buffer> {
+		return await this.run(Operation.Show, async () => {
+			const relativePath = path.relative(this.repository.root, filePath).replace(/\\/g, '/');
+			const configFiles = workspace.getConfiguration('files', Uri.file(filePath));
+			const encoding = configFiles.get<string>('encoding');
+
+			// TODO@joao: REsource config api
+			return await this.repository.buffer(`${ref}:${relativePath}`);
+		});
+	}
+
+	lstree(ref: string, filePath: string): Promise<{ mode: number, object: string, size: number }> {
+		return this.run(Operation.LSTree, () => this.repository.lstree(ref, filePath));
+	}
+
+	detectObjectType(object: string): Promise<{ mimetype: string, encoding?: string }> {
+		return this.run(Operation.Show, () => this.repository.detectObjectType(object));
 	}
 
 	async getStashes(): Promise<Stash[]> {
 		return await this.repository.getStashes();
 	}
 
-	async createStash(message?: string): Promise<void> {
-		return await this.run(Operation.Stash, () => this.repository.createStash(message));
+	async createStash(message?: string, includeUntracked?: boolean): Promise<void> {
+		return await this.run(Operation.Stash, () => this.repository.createStash(message, includeUntracked));
 	}
 
 	async popStash(index?: number): Promise<void> {
@@ -729,18 +764,20 @@ export class Repository implements Disposable {
 
 				if (filePaths.length === 0) {
 					// nothing left
-					return Promise.resolve(new Set<string>());
+					return resolve(new Set<string>());
 				}
 
-				const child = this.repository.stream(['check-ignore', ...filePaths]);
+				// https://git-scm.com/docs/git-check-ignore#git-check-ignore--z
+				const child = this.repository.stream(['check-ignore', '-z', '--stdin'], { stdio: [null, null, null] });
+				child.stdin.end(filePaths.join('\0'), 'utf8');
 
 				const onExit = (exitCode: number) => {
 					if (exitCode === 1) {
 						// nothing ignored
 						resolve(new Set<string>());
 					} else if (exitCode === 0) {
-						// each line is something ignored
-						resolve(new Set<string>(data.split('\n')));
+						// paths are separated by the null-character
+						resolve(new Set<string>(data.split('\0')));
 					} else {
 						reject(new GitError({ stdout: data, stderr, exitCode }));
 					}
@@ -770,6 +807,8 @@ export class Repository implements Disposable {
 		}
 
 		const run = async () => {
+			let error: any = null;
+
 			this._operations.start(operation);
 			this._onRunOperation.fire(operation);
 
@@ -782,6 +821,8 @@ export class Repository implements Disposable {
 
 				return result;
 			} catch (err) {
+				error = err;
+
 				if (err.gitErrorCode === GitErrorCodes.NotAGitRepository) {
 					this.state = RepositoryState.Disposed;
 				}
@@ -789,7 +830,7 @@ export class Repository implements Disposable {
 				throw err;
 			} finally {
 				this._operations.end(operation);
-				this._onDidRunOperation.fire(operation);
+				this._onDidRunOperation.fire({ operation, error });
 			}
 		};
 
@@ -821,6 +862,7 @@ export class Repository implements Disposable {
 		const { status, didHitLimit } = await this.repository.getStatus();
 		const config = workspace.getConfiguration('git');
 		const shouldIgnore = config.get<boolean>('ignoreLimitWarning') === true;
+		const useIcons = config.get<boolean>('decorations.enabled', true);
 
 		this.isRepositoryHuge = didHitLimit;
 
@@ -868,30 +910,30 @@ export class Repository implements Disposable {
 			const renameUri = raw.rename ? Uri.file(path.join(this.repository.root, raw.rename)) : undefined;
 
 			switch (raw.x + raw.y) {
-				case '??': return workingTree.push(new Resource(ResourceGroupType.WorkingTree, uri, Status.UNTRACKED));
-				case '!!': return workingTree.push(new Resource(ResourceGroupType.WorkingTree, uri, Status.IGNORED));
-				case 'DD': return merge.push(new Resource(ResourceGroupType.Merge, uri, Status.BOTH_DELETED));
-				case 'AU': return merge.push(new Resource(ResourceGroupType.Merge, uri, Status.ADDED_BY_US));
-				case 'UD': return merge.push(new Resource(ResourceGroupType.Merge, uri, Status.DELETED_BY_THEM));
-				case 'UA': return merge.push(new Resource(ResourceGroupType.Merge, uri, Status.ADDED_BY_THEM));
-				case 'DU': return merge.push(new Resource(ResourceGroupType.Merge, uri, Status.DELETED_BY_US));
-				case 'AA': return merge.push(new Resource(ResourceGroupType.Merge, uri, Status.BOTH_ADDED));
-				case 'UU': return merge.push(new Resource(ResourceGroupType.Merge, uri, Status.BOTH_MODIFIED));
+				case '??': return workingTree.push(new Resource(ResourceGroupType.WorkingTree, uri, Status.UNTRACKED, useIcons));
+				case '!!': return workingTree.push(new Resource(ResourceGroupType.WorkingTree, uri, Status.IGNORED, useIcons));
+				case 'DD': return merge.push(new Resource(ResourceGroupType.Merge, uri, Status.BOTH_DELETED, useIcons));
+				case 'AU': return merge.push(new Resource(ResourceGroupType.Merge, uri, Status.ADDED_BY_US, useIcons));
+				case 'UD': return merge.push(new Resource(ResourceGroupType.Merge, uri, Status.DELETED_BY_THEM, useIcons));
+				case 'UA': return merge.push(new Resource(ResourceGroupType.Merge, uri, Status.ADDED_BY_THEM, useIcons));
+				case 'DU': return merge.push(new Resource(ResourceGroupType.Merge, uri, Status.DELETED_BY_US, useIcons));
+				case 'AA': return merge.push(new Resource(ResourceGroupType.Merge, uri, Status.BOTH_ADDED, useIcons));
+				case 'UU': return merge.push(new Resource(ResourceGroupType.Merge, uri, Status.BOTH_MODIFIED, useIcons));
 			}
 
 			let isModifiedInIndex = false;
 
 			switch (raw.x) {
-				case 'M': index.push(new Resource(ResourceGroupType.Index, uri, Status.INDEX_MODIFIED)); isModifiedInIndex = true; break;
-				case 'A': index.push(new Resource(ResourceGroupType.Index, uri, Status.INDEX_ADDED)); break;
-				case 'D': index.push(new Resource(ResourceGroupType.Index, uri, Status.INDEX_DELETED)); break;
-				case 'R': index.push(new Resource(ResourceGroupType.Index, uri, Status.INDEX_RENAMED, renameUri)); break;
-				case 'C': index.push(new Resource(ResourceGroupType.Index, uri, Status.INDEX_COPIED, renameUri)); break;
+				case 'M': index.push(new Resource(ResourceGroupType.Index, uri, Status.INDEX_MODIFIED, useIcons)); isModifiedInIndex = true; break;
+				case 'A': index.push(new Resource(ResourceGroupType.Index, uri, Status.INDEX_ADDED, useIcons)); break;
+				case 'D': index.push(new Resource(ResourceGroupType.Index, uri, Status.INDEX_DELETED, useIcons)); break;
+				case 'R': index.push(new Resource(ResourceGroupType.Index, uri, Status.INDEX_RENAMED, useIcons, renameUri)); break;
+				case 'C': index.push(new Resource(ResourceGroupType.Index, uri, Status.INDEX_COPIED, useIcons, renameUri)); break;
 			}
 
 			switch (raw.y) {
-				case 'M': workingTree.push(new Resource(ResourceGroupType.WorkingTree, uri, Status.MODIFIED, renameUri)); break;
-				case 'D': workingTree.push(new Resource(ResourceGroupType.WorkingTree, uri, Status.DELETED, renameUri)); break;
+				case 'M': workingTree.push(new Resource(ResourceGroupType.WorkingTree, uri, Status.MODIFIED, useIcons, renameUri)); break;
+				case 'D': workingTree.push(new Resource(ResourceGroupType.WorkingTree, uri, Status.DELETED, useIcons, renameUri)); break;
 			}
 		});
 

@@ -9,8 +9,8 @@ import { Range } from 'vs/editor/common/core/range';
 import { Selection } from 'vs/editor/common/core/selection';
 import { ISingleEditOperation } from 'vs/editor/common/editorCommon';
 import { Model } from 'vs/editor/common/model/model';
-import { EditOperationsCommand } from 'vs/editor/contrib/format/common/formatCommand';
-import { testCommand } from 'vs/editor/test/common/commands/commandTestUtils';
+import { EditOperationsCommand } from 'vs/editor/contrib/format/formatCommand';
+import { testCommand } from 'vs/editor/test/browser/testCommand';
 
 function editOp(startLineNumber: number, startColumn: number, endLineNumber: number, endColumn: number, text: string[]): ISingleEditOperation {
 	return {

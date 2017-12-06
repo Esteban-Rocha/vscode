@@ -5,8 +5,8 @@
 'use strict';
 
 import { Selection } from 'vs/editor/common/core/selection';
-import { SortLinesCommand } from 'vs/editor/contrib/linesOperations/common/sortLinesCommand';
-import { testCommand } from 'vs/editor/test/common/commands/commandTestUtils';
+import { SortLinesCommand } from 'vs/editor/contrib/linesOperations/sortLinesCommand';
+import { testCommand } from 'vs/editor/test/browser/testCommand';
 
 function testSortLinesAscendingCommand(lines: string[], selection: Selection, expectedLines: string[], expectedSelection: Selection): void {
 	testCommand(lines, null, selection, (sel) => new SortLinesCommand(sel, false), expectedLines, expectedSelection);
@@ -123,7 +123,7 @@ suite('Editor Contrib - Sort Lines Command', () => {
 		);
 	});
 
-	test('sorting first 4 lines desscending', function () {
+	test('sorting first 4 lines descending', function () {
 		testSortLinesDescendingCommand(
 			[
 				'first',

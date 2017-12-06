@@ -7,16 +7,16 @@
 import * as assert from 'assert';
 import { Position } from 'vs/editor/common/core/position';
 import { Selection } from 'vs/editor/common/core/selection';
-import { SnippetController2 } from 'vs/editor/contrib/snippet/browser/snippetController2';
-import { MockCodeEditor, withMockCodeEditor } from 'vs/editor/test/common/mocks/mockCodeEditor';
+import { SnippetController2 } from 'vs/editor/contrib/snippet/snippetController2';
+import { TestCodeEditor, withTestCodeEditor } from 'vs/editor/test/browser/testCodeEditor';
 import { Cursor } from 'vs/editor/common/controller/cursor';
 import { IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
-import { ICommonCodeEditor } from 'vs/editor/common/editorCommon';
+import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
 class TestSnippetController extends SnippetController2 {
 
 	constructor(
-		editor: ICommonCodeEditor,
+		editor: ICodeEditor,
 		@IContextKeyService private _contextKeyService: IContextKeyService
 	) {
 		super(editor, _contextKeyService);
@@ -30,7 +30,7 @@ class TestSnippetController extends SnippetController2 {
 
 suite('SnippetController', () => {
 
-	function snippetTest(cb: (editor: MockCodeEditor, cursor: Cursor, template: string, snippetController: TestSnippetController) => void, lines?: string[]): void {
+	function snippetTest(cb: (editor: TestCodeEditor, cursor: Cursor, template: string, snippetController: TestSnippetController) => void, lines?: string[]): void {
 
 		if (!lines) {
 			lines = [
@@ -42,7 +42,7 @@ suite('SnippetController', () => {
 			];
 		}
 
-		withMockCodeEditor(lines, {}, (editor, cursor) => {
+		withTestCodeEditor(lines, {}, (editor, cursor) => {
 			editor.getModel().updateOptions({
 				insertSpaces: false
 			});

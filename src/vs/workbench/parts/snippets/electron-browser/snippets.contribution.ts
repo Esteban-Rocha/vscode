@@ -19,8 +19,8 @@ import * as nls from 'vs/nls';
 import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
 import { LanguageId } from 'vs/editor/common/modes';
 import { TPromise } from 'vs/base/common/winjs.base';
-import { SnippetParser, Variable, Placeholder, Text } from 'vs/editor/contrib/snippet/browser/snippetParser';
-import { EditorSnippetVariableResolver } from 'vs/editor/contrib/snippet/browser/snippetVariables';
+import { SnippetParser, Variable, Placeholder, Text } from 'vs/editor/contrib/snippet/snippetParser';
+import { EditorSnippetVariableResolver } from 'vs/editor/contrib/snippet/snippetVariables';
 
 export const ISnippetsService = createDecorator<ISnippetsService>('snippetService');
 
@@ -210,6 +210,7 @@ export class Snippet {
 const schemaId = 'vscode://schemas/snippets';
 const schema: IJSONSchema = {
 	'id': schemaId,
+	'allowComments': true,
 	'defaultSnippets': [{
 		'label': nls.localize('snippetSchema.json.default', "Empty snippet"),
 		'body': { '${1:snippetName}': { 'prefix': '${2:prefix}', 'body': '${3:snippet}', 'description': '${4:description}' } }
