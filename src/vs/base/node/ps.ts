@@ -61,12 +61,30 @@ export function listProcesses(rootPid: number): Promise<ProcessItem> {
 		function findName(cmd: string): string {
 
 			const RENDERER_PROCESS_HINT = /--disable-blink-features=Auxclick/;
-			const WINDOWS_WATCHER_HINT = /\\watcher\\win32\\CodeHelper.exe/;
+			const WINDOWS_WATCHER_HINT = /\\watcher\\win32\\CodeHelper\.exe/;
+			const WINDOWS_CRASH_REPORTER = /--crashes-directory/;
+			const WINDOWS_PTY = /\\pipe\\winpty-control/;
+			const WINDOWS_CONSOLE_HOST = /conhost\.exe/;
 			const TYPE = /--type=([a-zA-Z-]+)/;
 
 			// find windows file watcher
 			if (WINDOWS_WATCHER_HINT.exec(cmd)) {
-				return 'watcherService';
+				return 'watcherService ';
+			}
+
+			// find windows crash reporter
+			if (WINDOWS_CRASH_REPORTER.exec(cmd)) {
+				return 'electron-crash-reporter';
+			}
+
+			// find windows pty process
+			if (WINDOWS_PTY.exec(cmd)) {
+				return 'winpty-process';
+			}
+
+			//find windows console host process
+			if (WINDOWS_CONSOLE_HOST.exec(cmd)) {
+				return 'console-window-host (Windows internal process)';
 			}
 
 			// find "--type=xxxx"
@@ -126,10 +144,24 @@ export function listProcesses(rootPid: number): Promise<ProcessItem> {
 
 			type Item = ProcessInfo | TopProcess;
 
-			const execMain = path.basename(process.execPath).replace(/ /g, '` ');
-			const script = URI.parse(require.toUrl('vs/base/node/ps-win.ps1')).fsPath.replace(/ /g, '` ');
-			const commandLine = `${script} -ProcessName ${execMain} -MaxSamples 3`;
-			const cmd = spawn('powershell.exe', ['-ExecutionPolicy', 'Bypass', '-Command', commandLine]);
+			const cleanUNCPrefix = (value: string): string => {
+				if (value.indexOf('\\\\?\\') === 0) {
+					return value.substr(4);
+				} else if (value.indexOf('\\??\\') === 0) {
+					return value.substr(4);
+				} else if (value.indexOf('"\\\\?\\') === 0) {
+					return '"' + value.substr(5);
+				} else if (value.indexOf('"\\??\\') === 0) {
+					return '"' + value.substr(5);
+				} else {
+					return value;
+				}
+			};
+
+			const execMain = path.basename(process.execPath);
+			const script = URI.parse(require.toUrl('vs/base/node/ps-win.ps1')).fsPath;
+			const commandLine = `& {& '${script}' -ProcessName '${execMain}' -MaxSamples 3}`;
+			const cmd = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', commandLine]);
 
 			let stdout = '';
 			let stderr = '';
@@ -159,9 +191,10 @@ export function listProcesses(rootPid: number): Promise<ProcessItem> {
 							} else {
 								load = -1;
 							}
+							let commandLine = cleanUNCPrefix(item.commandLine);
 							processItems.set(item.processId, {
-								name: findName(item.commandLine),
-								cmd: item.commandLine,
+								name: findName(commandLine),
+								cmd: commandLine,
 								pid: item.processId,
 								ppid: item.parentProcessId,
 								load: load,
@@ -190,6 +223,7 @@ export function listProcesses(rootPid: number): Promise<ProcessItem> {
 						reject(new Error(`Root process ${rootPid} not found`));
 					}
 				} catch (error) {
+					console.log(stdout);
 					reject(error);
 				}
 			});

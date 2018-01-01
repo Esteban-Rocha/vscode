@@ -10,7 +10,6 @@ import Event from 'vs/base/common/event';
 import { Builder, Dimension } from 'vs/base/browser/builder';
 import { Registry } from 'vs/platform/registry/common/platform';
 import { ActionsOrientation } from 'vs/base/browser/ui/actionbar/actionbar';
-import { Scope } from 'vs/workbench/browser/actions';
 import { IPanel } from 'vs/workbench/common/panel';
 import { CompositePart, ICompositeTitleLabel } from 'vs/workbench/browser/parts/compositePart';
 import { Panel, PanelRegistry, Extensions as PanelExtensions } from 'vs/workbench/browser/panel';
@@ -43,6 +42,7 @@ export class PanelPart extends CompositePart<Panel> implements IPanelService {
 	private blockOpeningPanel: boolean;
 	private compositeBar: CompositeBar;
 	private dimension: Dimension;
+	private toolbarWidth = new Map<string, number>();
 
 	constructor(
 		id: string,
@@ -69,7 +69,6 @@ export class PanelPart extends CompositePart<Panel> implements IPanelService {
 			Registry.as<PanelRegistry>(PanelExtensions.Panels).getDefaultPanelId(),
 			'panel',
 			'panel',
-			Scope.PANEL,
 			null,
 			id,
 			{ hasTitle: true }
@@ -234,14 +233,22 @@ export class PanelPart extends CompositePart<Panel> implements IPanelService {
 			let availableWidth = this.dimension.width - 40; // take padding into account
 			if (this.toolBar) {
 				// adjust height for global actions showing
-				availableWidth = Math.max(PanelPart.MIN_COMPOSITE_BAR_WIDTH, availableWidth - this.toolbarWidth);
+				availableWidth = Math.max(PanelPart.MIN_COMPOSITE_BAR_WIDTH, availableWidth - this.getToolbarWidth());
 			}
 			this.compositeBar.layout(new Dimension(availableWidth, this.dimension.height));
 		}
 	}
 
-	private get toolbarWidth(): number {
-		return this.toolBar.getContainer().getHTMLElement().offsetWidth;
+	private getToolbarWidth(): number {
+		const activePanel = this.getActivePanel();
+		if (!activePanel) {
+			return 0;
+		}
+		if (!this.toolbarWidth.has(activePanel.getId())) {
+			this.toolbarWidth.set(activePanel.getId(), this.toolBar.getContainer().getHTMLElement().offsetWidth);
+		}
+
+		return this.toolbarWidth.get(activePanel.getId());
 	}
 
 	public shutdown(): void {
@@ -322,7 +329,7 @@ registerThemingParticipant((theme: ITheme, collector: ICssStyleCollector) => {
 				outline-style: solid;
 				border-bottom: none;
 				padding-bottom: 0;
-				outline-offset: 3px;
+				outline-offset: 1px;
 			}
 
 			.monaco-workbench > .part.panel > .title > .panel-switcher-container > .monaco-action-bar .action-item:not(.checked) .action-label:hover {

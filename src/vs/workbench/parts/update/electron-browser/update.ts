@@ -33,6 +33,7 @@ import { IUpdateService, State as UpdateState } from 'vs/platform/update/common/
 import * as semver from 'semver';
 import { OS, isLinux, isWindows } from 'vs/base/common/platform';
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
+import { HappyHolidaysAction } from 'vs/workbench/parts/holidays/electron-browser/holidays.contribution';
 
 class ApplyUpdateAction extends Action {
 	constructor( @IUpdateService private updateService: IUpdateService) {
@@ -165,7 +166,7 @@ export class ShowReleaseNotesAction extends AbstractShowReleaseNotesAction {
 
 export class ShowCurrentReleaseNotesAction extends AbstractShowReleaseNotesAction {
 
-	static ID = 'update.showCurrentReleaseNotes';
+	static readonly ID = 'update.showCurrentReleaseNotes';
 	static LABEL = nls.localize('showReleaseNotes', "Show Release Notes");
 
 	constructor(
@@ -202,12 +203,13 @@ export class ProductContribution implements IWorkbenchContribution {
 		@IStorageService storageService: IStorageService,
 		@IInstantiationService instantiationService: IInstantiationService,
 		@IMessageService messageService: IMessageService,
-		@IWorkbenchEditorService editorService: IWorkbenchEditorService
+		@IWorkbenchEditorService editorService: IWorkbenchEditorService,
+		@IEnvironmentService environmentService: IEnvironmentService
 	) {
 		const lastVersion = storageService.get(ProductContribution.KEY, StorageScope.GLOBAL, '');
 
 		// was there an update? if so, open release notes
-		if (product.releaseNotesUrl && lastVersion && pkg.version !== lastVersion) {
+		if (!environmentService.skipReleaseNotes && product.releaseNotesUrl && lastVersion && pkg.version !== lastVersion) {
 			instantiationService.invokeFunction(loadReleaseNotes, pkg.version).then(
 				text => editorService.openEditor(instantiationService.createInstance(ReleaseNotesInput, pkg.version, text), { pinned: true }),
 				() => {
@@ -432,7 +434,9 @@ export class UpdateContribution implements IGlobalActivity {
 			new CommandAction(UpdateContribution.selectColorThemeId, nls.localize('selectTheme.label', "Color Theme"), this.commandService),
 			new CommandAction(UpdateContribution.selectIconThemeId, nls.localize('themes.selectIconTheme.label', "File Icon Theme"), this.commandService),
 			new Separator(),
-			updateAction
+			updateAction,
+			new Separator(),
+			new HappyHolidaysAction()
 		];
 	}
 

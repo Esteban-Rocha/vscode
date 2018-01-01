@@ -37,6 +37,7 @@ import { CommandManager } from './utils/commandManager';
 import DiagnosticsManager from './features/diagnostics';
 import { LanguageDescription } from './utils/languageDescription';
 import * as fileSchemes from './utils/fileSchemes';
+import { CachedNavTreeResponse } from './features/baseCodeLensProvider';
 
 const validateSetting = 'validate.enable';
 
@@ -144,16 +145,18 @@ class LanguageProvider {
 		this.disposables.push(languages.registerDocumentSymbolProvider(selector, new (await import('./features/documentSymbolProvider')).default(client)));
 		this.disposables.push(languages.registerSignatureHelpProvider(selector, new (await import('./features/signatureHelpProvider')).default(client), '(', ','));
 		this.disposables.push(languages.registerRenameProvider(selector, new (await import('./features/renameProvider')).default(client)));
-		this.disposables.push(languages.registerCodeActionsProvider(selector, new (await import('./features/quickFixProvider')).default(client, this.formattingOptionsManager)));
+		this.disposables.push(languages.registerCodeActionsProvider(selector, new (await import('./features/quickFixProvider')).default(client, this.formattingOptionsManager, commandManager)));
 		this.disposables.push(languages.registerCodeActionsProvider(selector, new (await import('./features/refactorProvider')).default(client, this.formattingOptionsManager, commandManager)));
 		this.registerVersionDependentProviders();
 
-		const referenceCodeLensProvider = new (await import('./features/referencesCodeLensProvider')).default(client, this.description.id);
+		const cachedResponse = new CachedNavTreeResponse();
+
+		const referenceCodeLensProvider = new (await import('./features/referencesCodeLensProvider')).default(client, this.description.id, cachedResponse);
 		referenceCodeLensProvider.updateConfiguration();
 		this.toUpdateOnConfigurationChanged.push(referenceCodeLensProvider);
 		this.disposables.push(languages.registerCodeLensProvider(selector, referenceCodeLensProvider));
 
-		const implementationCodeLensProvider = new (await import('./features/implementationsCodeLensProvider')).default(client, this.description.id);
+		const implementationCodeLensProvider = new (await import('./features/implementationsCodeLensProvider')).default(client, this.description.id, cachedResponse);
 		implementationCodeLensProvider.updateConfiguration();
 		this.toUpdateOnConfigurationChanged.push(implementationCodeLensProvider);
 		this.disposables.push(languages.registerCodeLensProvider(selector, implementationCodeLensProvider));

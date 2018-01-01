@@ -99,12 +99,14 @@ export class PreferencesSearchModel implements IPreferencesSearchModel {
 			return this._remoteProvider.filterPreferences(preferencesModel).then(null, err => {
 				const message = errors.getErrorMessage(err);
 
-				/* __GDPR__
-					"defaultSettings.searchError" : {
-						"message": { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
-					}
-				*/
-				this.telemetryService.publicLog('defaultSettings.searchError', { message });
+				if (message.toLowerCase() !== 'canceled') {
+					/* __GDPR__
+						"defaultSettings.searchError" : {
+							"message": { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+						}
+					*/
+					this.telemetryService.publicLog('defaultSettings.searchError', { message });
+				}
 
 				return this._localProvider.filterPreferences(preferencesModel);
 			});
@@ -154,7 +156,8 @@ class RemoteSearchProvider {
 				let sortedNames = Object.keys(remoteResult.scoredResults).sort((a, b) => remoteResult.scoredResults[b] - remoteResult.scoredResults[a]);
 				if (sortedNames.length) {
 					const highScore = remoteResult.scoredResults[sortedNames[0]];
-					sortedNames = sortedNames.filter(name => remoteResult.scoredResults[name] >= highScore / 2);
+					const minScore = highScore / 5;
+					sortedNames = sortedNames.filter(name => remoteResult.scoredResults[name] >= minScore);
 				}
 
 				const settingMatcher = this.getRemoteSettingMatcher(sortedNames, preferencesModel);
@@ -247,11 +250,11 @@ function prepareUrl(query: string, endpoint: IEndpointDetails, buildNumber: numb
 	query = escapeSpecialChars(query);
 	const boost = 10;
 	const userQuery = `(${query})^${boost}`;
-	const encodedQuery = encodeURIComponent(userQuery + ' || ' + query);
 
 	// Appending Fuzzy after each word.
 	query = query.replace(/\ +/g, '~ ') + '~';
 
+	const encodedQuery = encodeURIComponent(userQuery + ' || ' + query);
 	let url = `${endpoint.urlBase}?`;
 	if (endpoint.key) {
 		url += `search=${encodedQuery}`;

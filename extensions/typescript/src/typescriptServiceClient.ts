@@ -27,6 +27,7 @@ import { TypeScriptServiceConfiguration, TsServerLogLevel } from './utils/config
 import { TypeScriptVersionProvider, TypeScriptVersion } from './utils/versionProvider';
 import { TypeScriptVersionPicker } from './utils/versionPicker';
 import * as fileSchemes from './utils/fileSchemes';
+import { inferredProjectConfig } from './utils/tsconfig';
 
 const localize = nls.loadMessageBundle();
 
@@ -113,7 +114,7 @@ export default class TypeScriptServiceClient implements ITypeScriptServiceClient
 
 	private pathSeparator: string;
 
-	private _onReady: { promise: Promise<void>; resolve: () => void; reject: () => void; };
+	private _onReady?: { promise: Promise<void>; resolve: () => void; reject: () => void; };
 	private _configuration: TypeScriptServiceConfiguration;
 	private versionProvider: TypeScriptVersionProvider;
 	private versionPicker: TypeScriptVersionPicker;
@@ -162,7 +163,7 @@ export default class TypeScriptServiceClient implements ITypeScriptServiceClient
 		var p = new Promise<void>((resolve, reject) => {
 			this._onReady = { promise: p, resolve, reject };
 		});
-		this._onReady.promise = p;
+		this._onReady!.promise = p;
 
 		this.servicePromise = null;
 		this.lastError = null;
@@ -267,7 +268,7 @@ export default class TypeScriptServiceClient implements ITypeScriptServiceClient
 	}
 
 	public onReady(): Promise<void> {
-		return this._onReady.promise;
+		return this._onReady!.promise;
 	}
 
 	private info(message: string, data?: any): void {
@@ -330,11 +331,9 @@ export default class TypeScriptServiceClient implements ITypeScriptServiceClient
 						this.error('Starting TSServer failed with error.', err);
 						window.showErrorMessage(localize('serverCouldNotBeStarted', 'TypeScript language server couldn\'t be started. Error message is: {0}', err.message || err));
 						/* __GDPR__
-							"error" : {
-								"message": { "classification": "CustomerContent", "purpose": "PerformanceAndHealth" }
-							}
+							"error" : {}
 						*/
-						this.logTelemetry('error', { message: err.message });
+						this.logTelemetry('error');
 						this.resetClientVersion();
 						return;
 					}
@@ -380,7 +379,7 @@ export default class TypeScriptServiceClient implements ITypeScriptServiceClient
 						(msg) => { this.dispatchMessage(msg); },
 						error => { this.error('ReaderError', error); });
 
-					this._onReady.resolve();
+					this._onReady!.resolve();
 					resolve(childProcess);
 					this._onTsServerStarted.fire();
 
@@ -476,20 +475,12 @@ export default class TypeScriptServiceClient implements ITypeScriptServiceClient
 	}
 
 	private getCompilerOptionsForInferredProjects(configuration: TypeScriptServiceConfiguration): Proto.ExternalProjectCompilerOptions {
-		const compilerOptions: Proto.ExternalProjectCompilerOptions = {
-			module: 'CommonJS' as Proto.ModuleKind,
-			target: 'ES6' as Proto.ScriptTarget,
+		return {
+			...inferredProjectConfig(configuration),
+			allowJs: true,
 			allowSyntheticDefaultImports: true,
 			allowNonTsExtensions: true,
-			allowJs: true,
-			jsx: 'Preserve' as Proto.JsxEmit
 		};
-
-		if (this.apiVersion.has230Features()) {
-			compilerOptions.checkJs = configuration.checkJs;
-			compilerOptions.experimentalDecorators = configuration.experimentalDecorators;
-		}
-		return compilerOptions;
 	}
 
 	private serviceExited(restart: boolean): void {

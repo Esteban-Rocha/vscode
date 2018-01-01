@@ -41,7 +41,7 @@ import { IContextKey, IContextKeyService } from 'vs/platform/contextkey/common/c
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { editorBackground } from 'vs/platform/theme/common/colorRegistry';
 import { EDITOR_GROUP_BACKGROUND } from 'vs/workbench/common/theme';
-import { createCSSRule, scheduleAtNextAnimationFrame } from 'vs/base/browser/dom';
+import { createCSSRule } from 'vs/base/browser/dom';
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
 import { join } from 'vs/base/common/paths';
 import { IEditorDescriptor, IEditorRegistry, Extensions as EditorExtensions } from 'vs/workbench/browser/editor';
@@ -692,9 +692,7 @@ export class EditorPart extends Part implements IEditorPart, IEditorGroupService
 		}
 
 		// Check for dirty and veto
-		const editorsToClose = arrays.flatten(groups.map(group => group.getEditors().map(editor => { return { group, editor }; })));
-
-		return this.handleDirty(editorsToClose).then(veto => {
+		return this.handleDirty(arrays.flatten(groups.map(group => group.getEditors(true /* in MRU order */).map(editor => { return { group, editor }; })))).then(veto => {
 			if (veto) {
 				return;
 			}
@@ -709,19 +707,24 @@ export class EditorPart extends Part implements IEditorPart, IEditorGroupService
 			return TPromise.wrap<void>(null);
 		}
 
-		let editors = group.getEditors();
+		let editorsToClose = group.getEditors(true /* in MRU order */);
+
+		// Filter: unmodified only
 		if (filter.unmodifiedOnly) {
-			editors = editors.filter(e => !e.isDirty());
+			editorsToClose = editorsToClose.filter(e => !e.isDirty());
+		}
+
+		// Filter: direction (left / right)
+		if (!types.isUndefinedOrNull(filter.direction)) {
+			editorsToClose = (filter.direction === Direction.LEFT) ? editorsToClose.slice(0, group.indexOf(filter.except)) : editorsToClose.slice(group.indexOf(filter.except) + 1);
+		}
+
+		// Filter: except
+		else {
+			editorsToClose = editorsToClose.filter(e => !filter.except || !e.matches(filter.except));
 		}
 
 		// Check for dirty and veto
-		let editorsToClose: EditorInput[];
-		if (types.isUndefinedOrNull(filter.direction)) {
-			editorsToClose = editors.filter(e => !filter.except || !e.matches(filter.except));
-		} else {
-			editorsToClose = (filter.direction === Direction.LEFT) ? editors.slice(0, group.indexOf(filter.except)) : editors.slice(group.indexOf(filter.except) + 1);
-		}
-
 		return this.handleDirty(editorsToClose.map(editor => { return { group, editor }; }), true /* ignore if opened in other group */).then(veto => {
 			if (veto) {
 				return;
@@ -819,39 +822,24 @@ export class EditorPart extends Part implements IEditorPart, IEditorGroupService
 
 		// Switch to editor that we want to handle
 		return this.openEditor(identifier.editor, null, this.stacks.positionOfGroup(identifier.group)).then(() => {
-			return this.ensureEditorOpenedBeforePrompt().then(() => {
-				const res = editor.confirmSave();
+			return editor.confirmSave().then(res => {
 				switch (res) {
 					case ConfirmResult.SAVE:
 						return editor.save().then(ok => !ok);
 
 					case ConfirmResult.DONT_SAVE:
-						return editor.revert().then(ok => !ok);
+						// first try a normal revert where the contents of the editor are restored
+						return editor.revert().then(ok => !ok, error => {
+							// if that fails, since we are about to close the editor, we accept that
+							// the editor cannot be reverted and instead do a soft revert that just
+							// enables us to close the editor. With this, a user can always close a
+							// dirty editor even when reverting fails.
+							return editor.revert({ soft: true }).then(ok => !ok);
+						});
 
 					case ConfirmResult.CANCEL:
 						return true; // veto
 				}
-			});
-		});
-	}
-
-	private ensureEditorOpenedBeforePrompt(): TPromise<void> {
-
-		// Force title area update
-		this.editorGroupsControl.updateTitleAreas(true /* refresh active group */);
-
-		// TODO@Ben our dialogs currently use the sync API, which means they block the JS
-		// thread when showing. As such, any UI update will not happen unless we wait a little
-		// bit. We wait for 2 request animation frames before showing the confirm. The first
-		// frame is where the UI is updating and the second is good enough to bring up the dialog.
-		// See also https://github.com/Microsoft/vscode/issues/39536
-		return new TPromise<void>(c => {
-			scheduleAtNextAnimationFrame(() => {
-				// Here the UI is updating
-				scheduleAtNextAnimationFrame(() => {
-					// Here we can show a blocking dialog
-					c(void 0);
-				});
 			});
 		});
 	}

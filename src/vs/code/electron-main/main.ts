@@ -21,7 +21,7 @@ import { ServicesAccessor, IInstantiationService } from 'vs/platform/instantiati
 import { InstantiationService } from 'vs/platform/instantiation/common/instantiationService';
 import { ServiceCollection } from 'vs/platform/instantiation/common/serviceCollection';
 import { SyncDescriptor } from 'vs/platform/instantiation/common/descriptors';
-import { ILogService, ConsoleLogMainService, MultiplexLogService, registerGlobalLogService } from 'vs/platform/log/common/log';
+import { ILogService, ConsoleLogMainService, MultiplexLogService } from 'vs/platform/log/common/log';
 import { StateService } from 'vs/platform/state/node/stateService';
 import { IStateService } from 'vs/platform/state/common/state';
 import { IBackupMainService } from 'vs/platform/backup/common/backup';
@@ -53,7 +53,6 @@ function createServices(args: ParsedArgs): IInstantiationService {
 	const consoleLogService = new ConsoleLogMainService(environmentService);
 	const logService = new MultiplexLogService([consoleLogService, spdlogService]);
 
-	registerGlobalLogService(logService);
 	process.once('exit', () => logService.dispose());
 
 	// Eventually cleanup
@@ -127,13 +126,16 @@ function setupIPC(accessor: ServicesAccessor): TPromise<Server> {
 
 	function setup(retry: boolean): TPromise<Server> {
 		return serve(environmentService.mainIPCHandle).then(server => {
-			if (platform.isMacintosh) {
-				app.dock.show(); // dock might be hidden at this case due to a retry
-			}
 
 			// Print --status usage info
 			if (environmentService.args.status) {
 				logService.warn('Warning: The --status argument can only be used if Code is already running. Please run it again after Code has started.');
+				throw new ExpectedError('Terminating...');
+			}
+
+			// dock might be hidden at this case due to a retry
+			if (platform.isMacintosh) {
+				app.dock.show();
 			}
 
 			// Set the VSCODE_PID variable here when we are sure we are the first
@@ -234,7 +236,7 @@ function setupIPC(accessor: ServicesAccessor): TPromise<Server> {
 }
 
 function showStartupWarningDialog(message: string, detail: string): void {
-	dialog.showMessageBox(null, {
+	dialog.showMessageBox({
 		title: product.nameLong,
 		type: 'warning',
 		buttons: [mnemonicButtonLabel(localize({ key: 'close', comment: ['&& denotes a mnemonic'] }, "&&Close"))],

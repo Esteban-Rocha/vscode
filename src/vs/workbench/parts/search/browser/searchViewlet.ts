@@ -60,6 +60,7 @@ import { PreferencesEditor } from 'vs/workbench/parts/preferences/browser/prefer
 import { SimpleFileResourceDragAndDrop } from 'vs/base/parts/tree/browser/treeDnd';
 import { isDiffEditor, isCodeEditor, ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import { WorkbenchTree, IListService } from 'vs/platform/list/browser/listService';
+import { IEditorOptions } from 'vs/editor/common/config/editorOptions';
 
 export class SearchViewlet extends Viewlet {
 
@@ -397,18 +398,20 @@ export class SearchViewlet extends Viewlet {
 			type: 'question'
 		};
 
-		if (this.messageService.confirm(confirmation)) {
-			this.searchWidget.setReplaceAllActionState(false);
-			this.viewModel.searchResult.replaceAll(progressRunner).then(() => {
-				progressRunner.done();
-				this.clearMessage()
-					.p({ text: afterReplaceAllMessage });
-			}, (error) => {
-				progressRunner.done();
-				errors.isPromiseCanceledError(error);
-				this.messageService.show(Severity.Error, error);
-			});
-		}
+		this.messageService.confirm(confirmation).then(confirmed => {
+			if (confirmed) {
+				this.searchWidget.setReplaceAllActionState(false);
+				this.viewModel.searchResult.replaceAll(progressRunner).then(() => {
+					progressRunner.done();
+					this.clearMessage()
+						.p({ text: afterReplaceAllMessage });
+				}, (error) => {
+					progressRunner.done();
+					errors.isPromiseCanceledError(error);
+					this.messageService.show(Severity.Error, error);
+				});
+			}
+		});
 	}
 
 	private buildAfterReplaceAllMessage(occurrences: number, fileCount: number, replaceValue?: string) {
@@ -669,15 +672,17 @@ export class SearchViewlet extends Viewlet {
 	public focus(): void {
 		super.focus();
 
-		this.searchWidget.focus();
-	}
-
-	public takeEditorText(): void {
-		const selectedText = this.getSearchTextFromEditor();
-		if (selectedText) {
-			this.searchWidget.searchInput.setValue(selectedText);
-			this.searchWidget.focus();
+		let updatedText = false;
+		const seedSearchStringFromSelection = this.configurationService.getValue<IEditorOptions>('editor').find.seedSearchStringFromSelection;
+		if (seedSearchStringFromSelection) {
+			const selectedText = this.getSearchTextFromEditor();
+			if (selectedText) {
+				this.searchWidget.searchInput.setValue(selectedText);
+				updatedText = true;
+			}
 		}
+
+		this.searchWidget.focus(undefined, undefined, updatedText);
 	}
 
 	public focusNextInputBox(): void {
@@ -1058,7 +1063,7 @@ export class SearchViewlet extends Viewlet {
 		this.showEmptyStage();
 
 		let isDone = false;
-		const outputChannel = this.outputService.getChannel('search');
+		const outputChannel = this.outputService.getChannel(Constants.SEARCH_OUTPUT_CHANNEL_ID);
 		let onComplete = (completed?: ISearchComplete) => {
 			if (query.useRipgrep) {
 				outputChannel.append('\n');
