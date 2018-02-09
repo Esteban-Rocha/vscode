@@ -26,13 +26,13 @@ import { Separator } from 'vs/base/browser/ui/actionbar/actionbar';
 import { IDelegate, IListContextMenuEvent, IRenderer } from 'vs/base/browser/ui/list/list';
 import { IEditorService, IEditor } from 'vs/platform/editor/common/editor';
 import { InputBox } from 'vs/base/browser/ui/inputbox/inputBox';
-import { IKeyboardEvent, StandardKeyboardEvent } from 'vs/base/browser/keyboardEvent';
+import { IKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { KeyCode } from 'vs/base/common/keyCodes';
-import { WorkbenchList, IListService } from 'vs/platform/list/browser/listService';
+import { WorkbenchList } from 'vs/platform/list/browser/listService';
 import { ViewsViewletPanel, IViewletViewOptions } from 'vs/workbench/browser/parts/views/viewsViewlet';
-import { IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
 import { attachInputBoxStyler } from 'vs/platform/theme/common/styler';
 import { isCodeEditor } from 'vs/editor/browser/editorBrowser';
+import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 
 const $ = dom.$;
 
@@ -50,13 +50,12 @@ export class BreakpointsView extends ViewsViewletPanel {
 		@IDebugService private debugService: IDebugService,
 		@IKeybindingService keybindingService: IKeybindingService,
 		@IInstantiationService private instantiationService: IInstantiationService,
-		@IListService private listService: IListService,
 		@IThemeService private themeService: IThemeService,
 		@IEditorService private editorService: IEditorService,
 		@IContextViewService private contextViewService: IContextViewService,
-		@IContextKeyService private contextKeyService: IContextKeyService
+		@IConfigurationService configurationService: IConfigurationService
 	) {
-		super(options, keybindingService, contextMenuService);
+		super(options, keybindingService, contextMenuService, configurationService);
 
 		this.minimumBodySize = this.maximumBodySize = this.getExpandedBodySize();
 		this.settings = options.viewletSettings;
@@ -67,7 +66,7 @@ export class BreakpointsView extends ViewsViewletPanel {
 		dom.addClass(container, 'debug-breakpoints');
 		const delegate = new BreakpointsDelegate(this.debugService);
 
-		this.list = new WorkbenchList<IEnablement>(container, delegate, [
+		this.list = this.instantiationService.createInstance(WorkbenchList, container, delegate, [
 			this.instantiationService.createInstance(BreakpointsRenderer),
 			new ExceptionBreakpointsRenderer(this.debugService),
 			new FunctionBreakpointsRenderer(this.debugService),
@@ -75,34 +74,33 @@ export class BreakpointsView extends ViewsViewletPanel {
 		], {
 				identityProvider: element => element.getId(),
 				multipleSelectionSupport: false
-			}, this.contextKeyService, this.listService, this.themeService);
+			}) as WorkbenchList<IEnablement>;
 
 		CONTEXT_BREAKPOINTS_FOCUSED.bindTo(this.list.contextKeyService);
 
 		this.list.onContextMenu(this.onListContextMenu, this, this.disposables);
 
-		const handleBreakpointFocus = (preserveFocuse: boolean, sideBySide: boolean, selectFunctionBreakpoint: boolean) => {
+		this.disposables.push(this.list.onOpen(e => {
+			let isSingleClick = false;
+			let isDoubleClick = false;
+			let openToSide = false;
+
+			const browserEvent = e.browserEvent;
+			if (browserEvent instanceof MouseEvent) {
+				isSingleClick = browserEvent.detail === 1;
+				isDoubleClick = browserEvent.detail === 2;
+				openToSide = (browserEvent.ctrlKey || browserEvent.metaKey || browserEvent.altKey);
+			}
+
 			const focused = this.list.getFocusedElements();
 			const element = focused.length ? focused[0] : undefined;
 			if (element instanceof Breakpoint) {
-				openBreakpointSource(element, sideBySide, preserveFocuse, this.debugService, this.editorService).done(undefined, onUnexpectedError);
+				openBreakpointSource(element, openToSide, isSingleClick, this.debugService, this.editorService).done(undefined, onUnexpectedError);
 			}
-			if (selectFunctionBreakpoint && element instanceof FunctionBreakpoint && element !== this.debugService.getViewModel().getSelectedFunctionBreakpoint()) {
+			if (isDoubleClick && element instanceof FunctionBreakpoint && element !== this.debugService.getViewModel().getSelectedFunctionBreakpoint()) {
 				this.debugService.getViewModel().setSelectedFunctionBreakpoint(element);
 				this.onBreakpointsChange();
 			}
-		};
-		this.disposables.push(this.list.onKeyUp(e => {
-			const event = new StandardKeyboardEvent(e);
-			if (event.equals(KeyCode.Enter)) {
-				handleBreakpointFocus(false, event && (event.ctrlKey || event.metaKey), false);
-			}
-		}));
-		this.disposables.push(this.list.onMouseDblClick(e => {
-			handleBreakpointFocus(false, false, true);
-		}));
-		this.disposables.push(this.list.onMouseClick(e => {
-			handleBreakpointFocus(true, false, false);
 		}));
 
 		this.list.splice(0, this.list.length, this.elements);
@@ -488,7 +486,7 @@ class FunctionBreakpointInputRenderer implements IRenderer<IFunctionBreakpoint, 
 	}
 }
 
-function openBreakpointSource(breakpoint: Breakpoint, sideBySide: boolean, preserveFocus: boolean, debugService: IDebugService, editorService: IEditorService): TPromise<IEditor> {
+export function openBreakpointSource(breakpoint: Breakpoint, sideBySide: boolean, preserveFocus: boolean, debugService: IDebugService, editorService: IEditorService): TPromise<IEditor> {
 	if (breakpoint.uri.scheme === DEBUG_SCHEME && debugService.state === State.Inactive) {
 		return TPromise.as(null);
 	}

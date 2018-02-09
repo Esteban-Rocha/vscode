@@ -10,11 +10,13 @@ import * as objects from 'vs/base/common/objects';
 import types = require('vs/base/common/types');
 import URI from 'vs/base/common/uri';
 import { IDisposable, dispose, Disposable } from 'vs/base/common/lifecycle';
-import { IEditor, IEditorViewState, IModel, ScrollType } from 'vs/editor/common/editorCommon';
+import { IEditor, IEditorViewState, ScrollType } from 'vs/editor/common/editorCommon';
 import { IEditorInput, IEditorModel, IEditorOptions, ITextEditorOptions, IBaseResourceInput, Position, Verbosity, IEditor as IBaseEditor, IRevertOptions } from 'vs/platform/editor/common/editor';
 import { IInstantiationService, IConstructorSignature0 } from 'vs/platform/instantiation/common/instantiation';
 import { RawContextKey } from 'vs/platform/contextkey/common/contextkey';
 import { Registry } from 'vs/platform/registry/common/platform';
+import { ITextModel } from 'vs/editor/common/model';
+import { Schemas } from 'vs/base/common/network';
 
 export const TextCompareEditorVisible = new RawContextKey<boolean>('textCompareEditorVisible', false);
 
@@ -35,7 +37,10 @@ export const TEXT_DIFF_EDITOR_ID = 'workbench.editors.textDiffEditor';
 export const BINARY_DIFF_EDITOR_ID = 'workbench.editors.binaryResourceDiffEditor';
 
 export interface IFileInputFactory {
+
 	createFileInput(resource: URI, encoding: string, instantiationService: IInstantiationService): IFileEditorInput;
+
+	isFileInput(obj: any): obj is IFileEditorInput;
 }
 
 export interface IEditorInputFactoryRegistry {
@@ -459,7 +464,7 @@ export class SideBySideEditorInput extends EditorInput {
 }
 
 export interface ITextEditorModel extends IEditorModel {
-	textEditorModel: IModel;
+	textEditorModel: ITextModel;
 }
 
 /**
@@ -787,8 +792,14 @@ export interface IEditorIdentifier {
 	editor: IEditorInput;
 }
 
-export interface IEditorContext extends IEditorIdentifier {
-	event?: any;
+/**
+ * The editor commands context is used for editor commands (e.g. in the editor title)
+ * and we must ensure that the context is serializable because it potentially travels
+ * to the extension host!
+ */
+export interface IEditorCommandsContext {
+	groupId: GroupIdentifier;
+	editorIndex?: number;
 }
 
 export interface IEditorCloseEvent extends IEditorIdentifier {
@@ -852,7 +863,7 @@ export const EditorCommands = {
 
 export interface IResourceOptions {
 	supportSideBySide?: boolean;
-	filter?: 'file' | 'untitled' | ['file', 'untitled'] | ['untitled', 'file'];
+	filter?: string | string[];
 }
 
 export function toResource(editor: IEditorInput, options?: IResourceOptions): URI {
@@ -877,18 +888,18 @@ export function toResource(editor: IEditorInput, options?: IResourceOptions): UR
 	let includeFiles: boolean;
 	let includeUntitled: boolean;
 	if (Array.isArray(options.filter)) {
-		includeFiles = (options.filter.indexOf('file') >= 0);
-		includeUntitled = (options.filter.indexOf('untitled') >= 0);
+		includeFiles = (options.filter.indexOf(Schemas.file) >= 0);
+		includeUntitled = (options.filter.indexOf(Schemas.untitled) >= 0);
 	} else {
-		includeFiles = (options.filter === 'file');
-		includeUntitled = (options.filter === 'untitled');
+		includeFiles = (options.filter === Schemas.file);
+		includeUntitled = (options.filter === Schemas.untitled);
 	}
 
-	if (includeFiles && resource.scheme === 'file') {
+	if (includeFiles && resource.scheme === Schemas.file) {
 		return resource;
 	}
 
-	if (includeUntitled && resource.scheme === 'untitled') {
+	if (includeUntitled && resource.scheme === Schemas.untitled) {
 		return resource;
 	}
 

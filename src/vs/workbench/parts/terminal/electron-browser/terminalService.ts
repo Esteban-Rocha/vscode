@@ -30,17 +30,17 @@ export class TerminalService extends AbstractTerminalService implements ITermina
 
 	constructor(
 		@IContextKeyService _contextKeyService: IContextKeyService,
-		@IConfigurationService _configurationService: IConfigurationService,
 		@IPanelService _panelService: IPanelService,
 		@IPartService _partService: IPartService,
 		@ILifecycleService _lifecycleService: ILifecycleService,
+		@IConfigurationService private _configurationService: IConfigurationService,
 		@IInstantiationService private _instantiationService: IInstantiationService,
 		@IQuickOpenService private _quickOpenService: IQuickOpenService,
 		@IChoiceService private _choiceService: IChoiceService,
 		@IStorageService private _storageService: IStorageService,
 		@IMessageService private _messageService: IMessageService
 	) {
-		super(_contextKeyService, _configurationService, _panelService, _partService, _lifecycleService);
+		super(_contextKeyService, _panelService, _partService, _lifecycleService);
 
 		this._configHelper = this._instantiationService.createInstance(TerminalConfigHelper);
 	}
@@ -53,7 +53,6 @@ export class TerminalService extends AbstractTerminalService implements ITermina
 			shell);
 		terminalInstance.addDisposable(terminalInstance.onTitleChanged(this._onInstanceTitleChanged.fire, this._onInstanceTitleChanged));
 		terminalInstance.addDisposable(terminalInstance.onDisposed(this._onInstanceDisposed.fire, this._onInstanceDisposed));
-		terminalInstance.addDisposable(terminalInstance.onDataForApi(this._onInstanceData.fire, this._onInstanceData));
 		terminalInstance.addDisposable(terminalInstance.onProcessIdReady(this._onInstanceProcessIdReady.fire, this._onInstanceProcessIdReady));
 		this.terminalInstances.push(terminalInstance);
 		if (this.terminalInstances.length === 1) {
@@ -121,7 +120,7 @@ export class TerminalService extends AbstractTerminalService implements ITermina
 		}
 
 		const message = nls.localize('terminal.integrated.chooseWindowsShellInfo', "You can change the default terminal shell by selecting the customize button.");
-		const options = [nls.localize('customize', "Customize"), nls.localize('cancel', "Cancel"), nls.localize('never again', "OK, Never Show Again")];
+		const options = [nls.localize('customize', "Customize"), nls.localize('cancel', "Cancel"), nls.localize('never again', "OK, Don't Show Again")];
 		this._choiceService.choose(Severity.Info, message, options, 1).then(choice => {
 			switch (choice) {
 				case 0:

@@ -13,11 +13,10 @@ import { dispose, IDisposable } from 'vs/base/common/lifecycle';
 import { IAction, IActionRunner } from 'vs/base/common/actions';
 import { IActionItem } from 'vs/base/browser/ui/actionbar/actionbar';
 import { firstIndex } from 'vs/base/common/arrays';
-import { DelayedDragHandler } from 'vs/base/browser/dnd';
 import { IExtensionService } from 'vs/platform/extensions/common/extensions';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
-import { ViewsRegistry, ViewLocation, IViewDescriptor } from 'vs/workbench/browser/parts/views/viewsRegistry';
+import { ViewsRegistry, ViewLocation, IViewDescriptor, IViewsViewlet } from 'vs/workbench/common/views';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
@@ -27,7 +26,11 @@ import { IContextKeyService, IContextKeyChangeEvent } from 'vs/platform/contextk
 import { StandardMouseEvent } from 'vs/base/browser/mouseEvent';
 import { PanelViewlet, ViewletPanel } from 'vs/workbench/browser/parts/views/panelViewlet';
 import { IPanelOptions } from 'vs/base/browser/ui/splitview/panelview';
-import { WorkbenchTree } from 'vs/platform/list/browser/listService';
+import { WorkbenchTree, IListService } from 'vs/platform/list/browser/listService';
+import { IWorkbenchThemeService, IFileIconTheme } from 'vs/workbench/services/themes/common/workbenchThemeService';
+import { ITreeConfiguration, ITreeOptions } from 'vs/base/parts/tree/browser/tree';
+import Event, { Emitter } from 'vs/base/common/event';
+import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 
 export interface IViewOptions extends IPanelOptions {
 	id: string;
@@ -45,9 +48,10 @@ export abstract class ViewsViewletPanel extends ViewletPanel {
 	constructor(
 		options: IViewOptions,
 		protected keybindingService: IKeybindingService,
-		protected contextMenuService: IContextMenuService
+		protected contextMenuService: IContextMenuService,
+		@IConfigurationService configurationService: IConfigurationService
 	) {
-		super(options.name, options, keybindingService, contextMenuService);
+		super(options.name, options, keybindingService, contextMenuService, configurationService);
 
 		this.id = options.id;
 		this.name = options.name;
@@ -96,50 +100,15 @@ export abstract class ViewsViewletPanel extends ViewletPanel {
 
 }
 
-// TODO@isidor @sandeep remove this class
 export abstract class TreeViewsViewletPanel extends ViewsViewletPanel {
 
-	readonly id: string;
-	readonly name: string;
-	protected treeContainer: HTMLElement;
-
-	// TODO@sandeep why is tree here? isn't this coming only from TreeView
 	protected tree: WorkbenchTree;
-	protected isDisposed: boolean;
-	private dragHandler: DelayedDragHandler;
-
-	constructor(
-		options: IViewOptions,
-		protected keybindingService: IKeybindingService,
-		protected contextMenuService: IContextMenuService
-	) {
-		super(options, keybindingService, contextMenuService);
-
-		this.id = options.id;
-		this.name = options.name;
-		this._expanded = options.expanded;
-	}
 
 	setExpanded(expanded: boolean): void {
-		this.updateTreeVisibility(this.tree, expanded);
-		super.setExpanded(expanded);
-	}
-
-	protected renderHeader(container: HTMLElement): void {
-		super.renderHeader(container);
-
-		// Expand on drag over
-		this.dragHandler = new DelayedDragHandler(container, () => this.setExpanded(true));
-	}
-
-	protected renderViewTree(container: HTMLElement): HTMLElement {
-		const treeContainer = document.createElement('div');
-		container.appendChild(treeContainer);
-		return treeContainer;
-	}
-
-	getViewer(): WorkbenchTree {
-		return this.tree;
+		if (this.isExpanded() !== expanded) {
+			this.updateTreeVisibility(this.tree, expanded);
+			super.setExpanded(expanded);
+		}
 	}
 
 	setVisible(visible: boolean): TPromise<void> {
@@ -147,7 +116,6 @@ export abstract class TreeViewsViewletPanel extends ViewsViewletPanel {
 			return super.setVisible(visible)
 				.then(() => this.updateTreeVisibility(this.tree, visible && this.isExpanded()));
 		}
-
 		return TPromise.wrap(null);
 	}
 
@@ -156,62 +124,10 @@ export abstract class TreeViewsViewletPanel extends ViewsViewletPanel {
 		this.focusTree();
 	}
 
-	protected reveal(element: any, relativeTop?: number): TPromise<void> {
-		if (!this.tree) {
-			return TPromise.as(null); // return early if viewlet has not yet been created
-		}
-
-		return this.tree.reveal(element, relativeTop);
-	}
-
 	layoutBody(size: number): void {
 		if (this.tree) {
-			this.treeContainer.style.height = size + 'px';
 			this.tree.layout(size);
 		}
-	}
-
-	getActions(): IAction[] {
-		return [];
-	}
-
-	getSecondaryActions(): IAction[] {
-		return [];
-	}
-
-	getActionItem(action: IAction): IActionItem {
-		return null;
-	}
-
-	getActionsContext(): any {
-		return undefined;
-	}
-
-	getOptimalWidth(): number {
-		return 0;
-	}
-
-	create(): TPromise<void> {
-		return TPromise.as(null);
-	}
-
-	shutdown(): void {
-		// Subclass to implement
-	}
-
-	dispose(): void {
-		this.isDisposed = true;
-		this.treeContainer = null;
-
-		if (this.tree) {
-			this.tree.dispose();
-		}
-
-		if (this.dragHandler) {
-			this.dragHandler.dispose();
-		}
-
-		super.dispose();
 	}
 
 	protected updateTreeVisibility(tree: WorkbenchTree, isVisible: boolean): void {
@@ -238,13 +154,20 @@ export abstract class TreeViewsViewletPanel extends ViewsViewletPanel {
 		}
 
 		// Make sure the current selected element is revealed
-		const selection = this.tree.getSelection();
-		if (selection.length > 0) {
-			this.reveal(selection[0], 0.5).done(null, errors.onUnexpectedError);
+		const selectedElement = this.tree.getSelection()[0];
+		if (selectedElement) {
+			this.tree.reveal(selectedElement, 0.5).done(null, errors.onUnexpectedError);
 		}
 
 		// Pass Focus to Viewer
 		this.tree.DOMFocus();
+	}
+
+	dispose(): void {
+		if (this.tree) {
+			this.tree.dispose();
+		}
+		super.dispose();
 	}
 }
 
@@ -259,7 +182,7 @@ export interface IViewState {
 	order: number;
 }
 
-export class ViewsViewlet extends PanelViewlet {
+export class ViewsViewlet extends PanelViewlet implements IViewsViewlet {
 
 	private viewHeaderContextMenuListeners: IDisposable[] = [];
 	private viewletSettings: object;
@@ -269,6 +192,9 @@ export class ViewsViewlet extends PanelViewlet {
 	private dimension: Dimension;
 	protected viewsStates: Map<string, IViewState> = new Map<string, IViewState>();
 	private areExtensionsReady: boolean = false;
+
+	private _onDidChangeViewVisibilityState: Emitter<string> = new Emitter<string>();
+	readonly onDidChangeViewVisibilityState: Event<string> = this._onDidChangeViewVisibilityState.event;
 
 	constructor(
 		id: string,
@@ -324,6 +250,17 @@ export class ViewsViewlet extends PanelViewlet {
 			.then(() => void 0);
 	}
 
+	openView(id: string): void {
+		this.focus();
+		const view = this.getView(id);
+		if (view) {
+			view.setExpanded(true);
+			view.focus();
+		} else {
+			this.toggleViewVisibility(id);
+		}
+	}
+
 	layout(dimension: Dimension): void {
 		super.layout(dimension);
 		this.dimension = dimension;
@@ -347,16 +284,22 @@ export class ViewsViewlet extends PanelViewlet {
 		super.shutdown();
 	}
 
-	toggleViewVisibility(id: string, visible?: boolean): void {
-		const view = this.getView(id);
+	toggleViewVisibility(id: string): void {
 		let viewState = this.viewsStates.get(id);
-
-		if (!viewState || (visible === true && view) || (visible === false && !view)) {
+		if (!viewState) {
 			return;
 		}
 
-		viewState.isHidden = !!view;
-		this.updateViews();
+		viewState.isHidden = !!this.getView(id);
+		this.updateViews()
+			.then(() => {
+				this._onDidChangeViewVisibilityState.fire(id);
+				if (!viewState.isHidden) {
+					this.openView(id);
+				} else {
+					this.focus();
+				}
+			});
 	}
 
 	private onViewsRegistered(views: IViewDescriptor[]): void {
@@ -563,7 +506,7 @@ export class ViewsViewlet extends PanelViewlet {
 			getAnchor: () => anchor,
 			getActions: () => TPromise.as([<IAction>{
 				id: `${view.id}.removeView`,
-				label: nls.localize('hideView', "Hide from Side Bar"),
+				label: nls.localize('hideView', "Hide"),
 				enabled: true,
 				run: () => this.toggleViewVisibility(view.id)
 			}]),
@@ -659,10 +602,12 @@ export class ViewsViewlet extends PanelViewlet {
 
 export class PersistentViewsViewlet extends ViewsViewlet {
 
+	private readonly hiddenViewsStorageId: string;
+
 	constructor(
 		id: string,
 		location: ViewLocation,
-		private viewletStateStorageId: string,
+		private readonly viewletStateStorageId: string,
 		showHeaderInTitleWhenSingleView: boolean,
 		@ITelemetryService telemetryService: ITelemetryService,
 		@IStorageService storageService: IStorageService,
@@ -674,6 +619,8 @@ export class PersistentViewsViewlet extends ViewsViewlet {
 		@IExtensionService extensionService: IExtensionService
 	) {
 		super(id, location, showHeaderInTitleWhenSingleView, telemetryService, storageService, instantiationService, themeService, contextKeyService, contextMenuService, extensionService);
+		this.hiddenViewsStorageId = `${this.viewletStateStorageId}.hidden`;
+		this._register(this.onDidChangeViewVisibilityState(id => this.onViewVisibilityChanged(id)));
 	}
 
 	create(parent: Builder): TPromise<void> {
@@ -712,6 +659,53 @@ export class PersistentViewsViewlet extends ViewsViewlet {
 
 	protected loadViewsStates(): void {
 		const viewsStates = JSON.parse(this.storageService.get(this.viewletStateStorageId, this.contextService.getWorkbenchState() !== WorkbenchState.EMPTY ? StorageScope.WORKSPACE : StorageScope.GLOBAL, '{}'));
-		Object.keys(viewsStates).forEach(id => this.viewsStates.set(id, <IViewState>viewsStates[id]));
+		const hiddenViews = this.loadHiddenViews();
+		Object.keys(viewsStates).forEach(id => this.viewsStates.set(id, <IViewState>{ ...viewsStates[id], ...{ isHidden: hiddenViews.indexOf(id) !== -1 } }));
+	}
+
+	private onViewVisibilityChanged(id: string) {
+		const hiddenViews = this.loadHiddenViews();
+		const index = hiddenViews.indexOf(id);
+		if (this.getView(id) && index !== -1) {
+			hiddenViews.splice(index, 1);
+		} else if (index === -1) {
+			hiddenViews.push(id);
+		}
+		this.storeHiddenViews(hiddenViews);
+	}
+
+	private storeHiddenViews(hiddenViews: string[]): void {
+		this.storageService.store(this.hiddenViewsStorageId, JSON.stringify(hiddenViews), StorageScope.GLOBAL);
+	}
+
+	private loadHiddenViews(): string[] {
+		return JSON.parse(this.storageService.get(this.hiddenViewsStorageId, StorageScope.GLOBAL, '[]'));
+	}
+}
+
+export class FileIconThemableWorkbenchTree extends WorkbenchTree {
+
+	constructor(
+		container: HTMLElement,
+		configuration: ITreeConfiguration,
+		options: ITreeOptions,
+		@IContextKeyService contextKeyService: IContextKeyService,
+		@IListService listService: IListService,
+		@IThemeService themeService: IWorkbenchThemeService,
+		@IConfigurationService configurationService: IConfigurationService,
+		@IInstantiationService instantiationService: IInstantiationService
+	) {
+		super(container, configuration, { ...options, ...{ showTwistie: false, twistiePixels: 12 } }, contextKeyService, listService, themeService, instantiationService, configurationService);
+
+		DOM.addClass(container, 'file-icon-themable-tree');
+		DOM.addClass(container, 'show-file-icons');
+
+		const onFileIconThemeChange = (fileIconTheme: IFileIconTheme) => {
+			DOM.toggleClass(container, 'align-icons-and-twisties', fileIconTheme.hasFileIcons && !fileIconTheme.hasFolderIcons);
+			DOM.toggleClass(container, 'hide-arrows', fileIconTheme.hidesExplorerArrows === true);
+		};
+
+		this.disposables.push(themeService.onDidFileIconThemeChange(onFileIconThemeChange));
+		onFileIconThemeChange(themeService.getFileIconTheme());
 	}
 }

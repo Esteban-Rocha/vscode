@@ -27,6 +27,7 @@ import URI from 'vs/base/common/uri';
 import { PANEL_BACKGROUND } from 'vs/workbench/common/theme';
 import { TERMINAL_BACKGROUND_COLOR } from 'vs/workbench/parts/terminal/electron-browser/terminalColorRegistry';
 import { DataTransfers } from 'vs/base/browser/dnd';
+import { ILifecycleService, LifecyclePhase } from 'vs/platform/lifecycle/common/lifecycle';
 
 export class TerminalPanel extends Panel {
 
@@ -45,6 +46,7 @@ export class TerminalPanel extends Panel {
 		@IContextMenuService private _contextMenuService: IContextMenuService,
 		@IInstantiationService private _instantiationService: IInstantiationService,
 		@ITerminalService private _terminalService: ITerminalService,
+		@ILifecycleService private _lifecycleService: ILifecycleService,
 		@IThemeService protected themeService: IThemeService,
 		@ITelemetryService telemetryService: ITelemetryService
 	) {
@@ -102,16 +104,20 @@ export class TerminalPanel extends Panel {
 				this._updateTheme();
 			} else {
 				return super.setVisible(visible).then(() => {
-					// Allow time for the panel to display if it is being shown
-					// for the first time. If there is not wait here the initial
-					// dimensions of the pty could be wrong.
-					setTimeout(() => {
-						const instance = this._terminalService.createInstance();
-						if (instance) {
-							this._updateFont();
-							this._updateTheme();
-						}
-					}, 0);
+					// Ensure the "Running" lifecycle face has been reached before creating the
+					// first terminal.
+					this._lifecycleService.when(LifecyclePhase.Running).then(() => {
+						// Allow time for the panel to display if it is being shown
+						// for the first time. If there is not wait here the initial
+						// dimensions of the pty could be wrong.
+						setTimeout(() => {
+							const instance = this._terminalService.createInstance();
+							if (instance) {
+								this._updateFont();
+								this._updateTheme();
+							}
+						}, 0);
+					});
 					return TPromise.as(void 0);
 				});
 			}
@@ -201,7 +207,7 @@ export class TerminalPanel extends Panel {
 				// occurs on the selection itself.
 				this._terminalService.getActiveInstance().focus();
 			} else if (event.which === 3) {
-				if (this._terminalService.configHelper.config.rightClickCopyPaste) {
+				if (this._terminalService.configHelper.config.rightClickBehavior === 'copyPaste') {
 					let terminal = this._terminalService.getActiveInstance();
 					if (terminal.hasSelection()) {
 						terminal.copySelection();
@@ -270,21 +276,22 @@ export class TerminalPanel extends Panel {
 					return;
 				}
 
-				// Check if the file was dragged from the tree explorer
-				let uri = e.dataTransfer.getData(DataTransfers.URL);
-				if (uri) {
-					uri = URI.parse(uri).path;
+				// Check if files were dragged from the tree explorer
+				let path: string;
+				let resources = e.dataTransfer.getData(DataTransfers.RESOURCES);
+				if (resources) {
+					path = URI.parse(JSON.parse(resources)[0]).path;
 				} else if (e.dataTransfer.files.length > 0) {
 					// Check if the file was dragged from the filesystem
-					uri = URI.file(e.dataTransfer.files[0].path).fsPath;
+					path = URI.file(e.dataTransfer.files[0].path).fsPath;
 				}
 
-				if (!uri) {
+				if (!path) {
 					return;
 				}
 
 				const terminal = this._terminalService.getActiveInstance();
-				terminal.sendText(TerminalPanel.preparePathForTerminal(uri), false);
+				terminal.sendText(TerminalPanel.preparePathForTerminal(path), false);
 			}
 		}));
 	}

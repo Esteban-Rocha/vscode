@@ -44,8 +44,9 @@ import { TestExtensionEnablementService } from 'vs/platform/extensionManagement/
 import { IURLService } from 'vs/platform/url/common/url';
 import { IChoiceService } from 'vs/platform/message/common/message';
 import product from 'vs/platform/node/product';
-import { IModel } from 'vs/editor/common/editorCommon';
+import { ITextModel } from 'vs/editor/common/model';
 import { IModelService } from 'vs/editor/common/services/modelService';
+import { ILifecycleService } from 'vs/platform/lifecycle/common/lifecycle';
 
 const mockExtensionGallery: IGalleryExtension[] = [
 	aGalleryExtension('MockExtension1', {
@@ -170,7 +171,7 @@ suite('ExtensionsTipsService Test', () => {
 		uninstallEvent: Emitter<IExtensionIdentifier>,
 		didUninstallEvent: Emitter<DidUninstallExtensionEvent>;
 	let prompted: boolean;
-	let onModelAddedEvent: Emitter<IModel>;
+	let onModelAddedEvent: Emitter<ITextModel>;
 
 	suiteSetup(() => {
 		instantiationService = new TestInstantiationService();
@@ -179,7 +180,7 @@ suite('ExtensionsTipsService Test', () => {
 		uninstallEvent = new Emitter<IExtensionIdentifier>();
 		didUninstallEvent = new Emitter<DidUninstallExtensionEvent>();
 		instantiationService.stub(IExtensionGalleryService, ExtensionGalleryService);
-
+		instantiationService.stub(ILifecycleService, new TestLifecycleService());
 		testConfigurationService = new TestConfigurationService();
 		instantiationService.stub(IConfigurationService, testConfigurationService);
 		instantiationService.stub(IExtensionManagementService, ExtensionManagementService);
@@ -191,7 +192,7 @@ suite('ExtensionsTipsService Test', () => {
 		instantiationService.stub(IURLService, { onOpenURL: new Emitter().event });
 		instantiationService.stub(ITelemetryService, NullTelemetryService);
 
-		onModelAddedEvent = new Emitter<IModel>();
+		onModelAddedEvent = new Emitter<ITextModel>();
 
 		product.extensionTips = {
 			'ms-vscode.csharp': '{**/*.cs,**/project.json,**/global.json,**/*.csproj,**/*.sln,**/appsettings.json}',
@@ -267,9 +268,21 @@ suite('ExtensionsTipsService Test', () => {
 	function testNoPromptForValidRecommendations(recommendations: string[]) {
 		return setUpFolderWorkspace('myFolder', recommendations).then(() => {
 			testObject = instantiationService.createInstance(ExtensionTipsService);
-			const promise = testObject.promptWorkspaceRecommendationsPromise || testObject.getWorkspaceRecommendations();
-			return promise.then(() => {
+			return testObject.promptWorkspaceRecommendationsPromise.then(() => {
 				assert.equal(Object.keys(testObject.getAllRecommendationsWithReason()).length, recommendations.length);
+				assert.ok(!prompted);
+			});
+		});
+	}
+
+	function testNoPromptOrRecommendationsForValidRecommendations(recommendations: string[]) {
+		return setUpFolderWorkspace('myFolder', mockTestData.validRecommendedExtensions).then(() => {
+			testObject = instantiationService.createInstance(ExtensionTipsService);
+			assert.equal(!testObject.promptWorkspaceRecommendationsPromise, true);
+			assert.ok(!prompted);
+
+			return testObject.getWorkspaceRecommendations().then(() => {
+				assert.equal(Object.keys(testObject.getAllRecommendationsWithReason()).length, 0);
 				assert.ok(!prompted);
 			});
 		});
@@ -277,12 +290,12 @@ suite('ExtensionsTipsService Test', () => {
 
 	test('ExtensionTipsService: No Prompt for valid workspace recommendations when galleryService is absent', () => {
 		instantiationService.stub(IExtensionGalleryService, 'isEnabled', false);
-		return testNoPromptForValidRecommendations(mockTestData.validRecommendedExtensions);
+		return testNoPromptOrRecommendationsForValidRecommendations(mockTestData.validRecommendedExtensions);
 	});
 
 	test('ExtensionTipsService: No Prompt for valid workspace recommendations during extension development', () => {
 		instantiationService.stub(IEnvironmentService, { extensionDevelopmentPath: true });
-		return testNoPromptForValidRecommendations(mockTestData.validRecommendedExtensions);
+		return testNoPromptOrRecommendationsForValidRecommendations(mockTestData.validRecommendedExtensions);
 	});
 
 	test('ExtensionTipsService: No workspace recommendations or prompts when extensions.json has empty array', () => {

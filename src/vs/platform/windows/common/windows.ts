@@ -15,6 +15,7 @@ import { IWorkspaceIdentifier, IWorkspaceFolderCreationData } from 'vs/platform/
 import { IRecentlyOpened } from 'vs/platform/history/common/history';
 import { ICommandAction } from 'vs/platform/actions/common/actions';
 import { PerformanceEntry } from 'vs/base/common/performance';
+import { LogLevel } from 'vs/platform/log/common/log';
 
 export const IWindowsService = createDecorator<IWindowsService>('windowsService');
 
@@ -159,6 +160,8 @@ export interface IWindowsService {
 
 	// TODO: this is a bit backwards
 	startCrashReporter(config: CrashReporterStartOptions): TPromise<void>;
+
+	openAboutDialog(): TPromise<void>;
 }
 
 export const IWindowService = createDecorator<IWindowService>('windowService');
@@ -297,6 +300,7 @@ export interface IAddFoldersRequest {
 export interface IWindowConfiguration extends ParsedArgs, IOpenFileRequest {
 	machineId: string;
 	windowId: number;
+	logLevel: LogLevel;
 
 	appRoot: string;
 	execPath: string;

@@ -21,39 +21,61 @@ import { CommandManager, Command } from '../utils/commandManager';
 const localize = nls.loadMessageBundle();
 
 class MyCompletionItem extends CompletionItem {
-	public readonly source: string | undefined;
 	public readonly useCodeSnippet: boolean;
 
 	constructor(
 		public readonly position: Position,
 		public readonly document: TextDocument,
-		entry: Proto.CompletionEntry,
+		line: string,
+		public readonly tsEntry: Proto.CompletionEntry,
 		enableDotCompletions: boolean,
 		useCodeSnippetsOnMethodSuggest: boolean
 	) {
-		super(entry.name);
-		this.source = entry.source;
+		super(tsEntry.name);
 
-		if (entry.isRecommended) {
+		if (tsEntry.isRecommended) {
 			// Make sure isRecommended property always comes first
 			// https://github.com/Microsoft/vscode/issues/40325
-			this.sortText = '\0' + entry.sortText;
-		} else if (entry.source) {
+			this.sortText = '\0' + tsEntry.sortText;
+		} else if (tsEntry.source) {
 			// De-prioritze auto-imports
 			// https://github.com/Microsoft/vscode/issues/40311
-			this.sortText = '\uffff' + entry.sortText;
+			this.sortText = '\uffff' + tsEntry.sortText;
 		} else {
-			this.sortText = entry.sortText;
+			this.sortText = tsEntry.sortText;
 		}
 
-		this.kind = MyCompletionItem.convertKind(entry.kind);
+		this.kind = MyCompletionItem.convertKind(tsEntry.kind);
 		this.position = position;
-		this.commitCharacters = MyCompletionItem.getCommitCharacters(enableDotCompletions, !useCodeSnippetsOnMethodSuggest, entry.kind);
+		this.commitCharacters = MyCompletionItem.getCommitCharacters(enableDotCompletions, !useCodeSnippetsOnMethodSuggest, tsEntry.kind);
 		this.useCodeSnippet = useCodeSnippetsOnMethodSuggest && (this.kind === CompletionItemKind.Function || this.kind === CompletionItemKind.Method);
 
-		if (entry.replacementSpan) {
-			this.range = tsTextSpanToVsRange(entry.replacementSpan);
+		if (tsEntry.replacementSpan) {
+			this.range = tsTextSpanToVsRange(tsEntry.replacementSpan);
 		}
+
+		if (typeof tsEntry.insertText === 'string') {
+			this.insertText = (tsEntry as any).insertText as string;
+
+			if (tsEntry.replacementSpan) {
+				this.range = tsTextSpanToVsRange(tsEntry.replacementSpan);
+				if (this.insertText[0] === '[') { // o.x -> o['x']
+					this.filterText = '.' + this.label;
+				}
+
+				// Make sure we only replace a single line at most
+				if (!this.range.isSingleLine) {
+					this.range = new Range(this.range.start.line, this.range.start.character, this.range.start.line, line.length);
+				}
+			}
+		}
+
+		if (tsEntry.kindModifiers.match(/\boptional\b/)) {
+			this.insertText = this.label;
+			this.filterText = this.label;
+			this.label += '?';
+		}
+
 	}
 
 	public resolve(): void {
@@ -234,6 +256,7 @@ export default class TypeScriptCompletionItemProvider implements CompletionItemP
 			return [];
 		}
 
+		const line = document.lineAt(position.line);
 		const config = this.getConfiguration(document.uri);
 
 		if (context.triggerCharacter === '"' || context.triggerCharacter === '\'') {
@@ -242,8 +265,8 @@ export default class TypeScriptCompletionItemProvider implements CompletionItemP
 			}
 
 			// make sure we are in something that looks like the start of an import
-			const line = document.lineAt(position.line).text.slice(0, position.character);
-			if (!line.match(/\b(from|import)\s*["']$/) && !line.match(/\b(import|require)\(['"]$/)) {
+			const pre = line.text.slice(0, position.character);
+			if (!pre.match(/\b(from|import)\s*["']$/) && !pre.match(/\b(import|require)\(['"]$/)) {
 				return [];
 			}
 		}
@@ -254,16 +277,16 @@ export default class TypeScriptCompletionItemProvider implements CompletionItemP
 			}
 
 			// make sure we are in something that looks like an import path
-			const line = document.lineAt(position.line).text.slice(0, position.character);
-			if (!line.match(/\b(from|import)\s*["'][^'"]*$/) && !line.match(/\b(import|require)\(['"][^'"]*$/)) {
+			const pre = line.text.slice(0, position.character);
+			if (!pre.match(/\b(from|import)\s*["'][^'"]*$/) && !pre.match(/\b(import|require)\(['"][^'"]*$/)) {
 				return [];
 			}
 		}
 
 		if (context.triggerCharacter === '@') {
 			// make sure we are in something that looks like the start of a jsdoc comment
-			const line = document.lineAt(position.line).text.slice(0, position.character);
-			if (!line.match(/^\s*\*[ ]?@/) && !line.match(/\/\*\*+[ ]?@/)) {
+			const pre = line.text.slice(0, position.character);
+			if (!pre.match(/^\s*\*[ ]?@/) && !pre.match(/\/\*\*+[ ]?@/)) {
 				return [];
 			}
 		}
@@ -271,8 +294,9 @@ export default class TypeScriptCompletionItemProvider implements CompletionItemP
 		try {
 			const args: Proto.CompletionsRequestArgs = {
 				...vsPositionToTsFileLocation(file, position),
-				includeExternalModuleExports: config.autoImportSuggestions
-			};
+				includeExternalModuleExports: config.autoImportSuggestions,
+				includeInsertTextCompletions: true
+			} as Proto.CompletionsRequestArgs;
 			const msg = await this.client.execute('completions', args, token);
 			// This info has to come from the tsserver. See https://github.com/Microsoft/TypeScript/issues/2831
 			// let isMemberCompletion = false;
@@ -313,7 +337,7 @@ export default class TypeScriptCompletionItemProvider implements CompletionItemP
 					if (!config.autoImportSuggestions && element.hasAction) {
 						continue;
 					}
-					const item = new MyCompletionItem(position, document, element, enableDotCompletions, config.useCodeSnippetsOnMethodSuggest);
+					const item = new MyCompletionItem(position, document, line.text, element, enableDotCompletions, config.useCodeSnippetsOnMethodSuggest);
 					completionItems.push(item);
 				}
 			}
@@ -342,7 +366,7 @@ export default class TypeScriptCompletionItemProvider implements CompletionItemP
 		const args: Proto.CompletionDetailsRequestArgs = {
 			...vsPositionToTsFileLocation(filepath, item.position),
 			entryNames: [
-				item.source ? { name: item.label, source: item.source } : item.label
+				item.tsEntry.source ? { name: item.tsEntry.name, source: item.tsEntry.source } : item.tsEntry.name
 			]
 		};
 
@@ -358,11 +382,35 @@ export default class TypeScriptCompletionItemProvider implements CompletionItemP
 			return item;
 		}
 		const detail = details[0];
-		item.detail = Previewer.plain(detail.displayParts);
+		item.detail = detail.displayParts.length ? Previewer.plain(detail.displayParts) : undefined;
+		item.documentation = this.getDocumentation(detail, item);
+
+		if (detail.codeActions && detail.codeActions.length) {
+			item.command = {
+				title: '',
+				command: ApplyCompletionCodeActionCommand.ID,
+				arguments: [filepath, detail.codeActions]
+			};
+		}
+
+		if (detail && item.useCodeSnippet) {
+			const shouldCompleteFunction = await this.isValidFunctionCompletionContext(filepath, item.position);
+			if (shouldCompleteFunction) {
+				item.insertText = this.snippetForFunctionCall(item, detail);
+			}
+			return item;
+		}
+
+		return item;
+	}
+
+	private getDocumentation(
+		detail: Proto.CompletionEntryDetails,
+		item: MyCompletionItem
+	): MarkdownString | undefined {
 		const documentation = new MarkdownString();
 		if (detail.source) {
 			let importPath = `'${Previewer.plain(detail.source)}'`;
-
 			if (this.client.apiVersion.has260Features() && !this.client.apiVersion.has262Features()) {
 				// Try to resolve the real import name that will be added
 				if (detail.codeActions && detail.codeActions[0]) {
@@ -383,27 +431,9 @@ export default class TypeScriptCompletionItemProvider implements CompletionItemP
 			}
 			documentation.appendMarkdown('\n\n');
 		}
-
 		Previewer.addMarkdownDocumentation(documentation, detail.documentation, detail.tags);
-		item.documentation = documentation;
 
-		if (detail.codeActions && detail.codeActions.length) {
-			item.command = {
-				title: '',
-				command: ApplyCompletionCodeActionCommand.ID,
-				arguments: [filepath, detail.codeActions]
-			};
-		}
-
-		if (detail && item.useCodeSnippet) {
-			const shouldCompleteFunction = await this.isValidFunctionCompletionContext(filepath, item.position);
-			if (shouldCompleteFunction) {
-				item.insertText = this.snippetForFunctionCall(detail);
-			}
-			return item;
-		}
-
-		return item;
+		return documentation.value.length ? documentation : undefined;
 	}
 
 	private async isValidFunctionCompletionContext(filepath: string, position: Position): Promise<boolean> {
@@ -426,12 +456,15 @@ export default class TypeScriptCompletionItemProvider implements CompletionItemP
 		}
 	}
 
-	private snippetForFunctionCall(detail: Proto.CompletionEntryDetails): SnippetString {
+	private snippetForFunctionCall(
+		item: CompletionItem,
+		detail: Proto.CompletionEntryDetails
+	): SnippetString {
 		let hasOptionalParameters = false;
 		let hasAddedParameters = false;
 
 		const snippet = new SnippetString();
-		snippet.appendText(detail.name);
+		snippet.appendText(item.label || item.insertText as string);
 		snippet.appendText('(');
 
 		let parenCount = 0;

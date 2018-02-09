@@ -10,7 +10,6 @@ import { ICommandService, ICommandEvent, CommandsRegistry } from 'vs/platform/co
 import { IExtensionService } from 'vs/platform/extensions/common/extensions';
 import Event, { Emitter } from 'vs/base/common/event';
 import { Disposable } from 'vs/base/common/lifecycle';
-import { IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
 import { ILogService } from 'vs/platform/log/common/log';
 
 export class CommandService extends Disposable implements ICommandService {
@@ -25,7 +24,6 @@ export class CommandService extends Disposable implements ICommandService {
 	constructor(
 		@IInstantiationService private _instantiationService: IInstantiationService,
 		@IExtensionService private _extensionService: IExtensionService,
-		@IContextKeyService private _contextKeyService: IContextKeyService,
 		@ILogService private _logService: ILogService
 	) {
 		super();
@@ -40,11 +38,16 @@ export class CommandService extends Disposable implements ICommandService {
 		// host didn't yet start and the command is already registered
 
 		const activation = this._extensionService.activateByEvent(`onCommand:${id}`);
+		const commandIsRegistered = !!CommandsRegistry.getCommand(id);
 
-		if (!this._extensionHostIsReady && CommandsRegistry.getCommand(id)) {
+		if (!this._extensionHostIsReady && commandIsRegistered) {
 			return this._tryExecuteCommand(id, args);
 		} else {
-			return activation.then(_ => this._tryExecuteCommand(id, args));
+			let waitFor: TPromise<any> = activation;
+			if (!commandIsRegistered) {
+				waitFor = TPromise.join([activation, this._extensionService.activateByEvent(`*`)]);
+			}
+			return waitFor.then(_ => this._tryExecuteCommand(id, args));
 		}
 	}
 
@@ -53,12 +56,6 @@ export class CommandService extends Disposable implements ICommandService {
 		if (!command) {
 			return TPromise.wrapError(new Error(`command '${id}' not found`));
 		}
-
-		if (command.precondition && !this._contextKeyService.contextMatchesRules(command.precondition)) {
-			// not enabled
-			return TPromise.wrapError(new Error('NOT_ENABLED'));
-		}
-
 		try {
 			this._onWillExecuteCommand.fire({ commandId: id });
 			const result = this._instantiationService.invokeFunction.apply(this._instantiationService, [command.handler].concat(args));

@@ -23,7 +23,8 @@ import { UntitledEditorInput } from 'vs/workbench/common/editor/untitledEditorIn
 import { IFileEditorInput, EncodingMode, IEncodingSupport, toResource, SideBySideEditorInput } from 'vs/workbench/common/editor';
 import { IDisposable, combinedDisposable, dispose } from 'vs/base/common/lifecycle';
 import { IUntitledEditorService } from 'vs/workbench/services/untitled/common/untitledEditorService';
-import { IEditorAction, EndOfLineSequence, IModel } from 'vs/editor/common/editorCommon';
+import { IEditorAction } from 'vs/editor/common/editorCommon';
+import { EndOfLineSequence, ITextModel } from 'vs/editor/common/model';
 import { IModelLanguageChangedEvent, IModelOptionsChangedEvent } from 'vs/editor/common/model/textModelEvents';
 import { TrimTrailingWhitespaceAction } from 'vs/editor/contrib/linesOperations/linesOperations';
 import { IndentUsingSpaces, IndentUsingTabs, DetectIndentation, IndentationToSpacesAction, IndentationToTabsAction } from 'vs/editor/contrib/indentation/indentation';
@@ -51,13 +52,14 @@ import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { IContextViewService } from 'vs/platform/contextview/browser/contextView';
 import { attachStylerCallback } from 'vs/platform/theme/common/styler';
 import { widgetShadow, editorWidgetBackground } from 'vs/platform/theme/common/colorRegistry';
+import { ConfigurationTarget } from 'vs/platform/configuration/common/configuration';
+import { deepClone } from 'vs/base/common/objects';
+import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
 // TODO@Sandeep layer breaker
 // tslint:disable-next-line:import-patterns
 import { IPreferencesService } from 'vs/workbench/parts/preferences/common/preferences';
-import { ConfigurationTarget } from 'vs/platform/configuration/common/configuration';
-import { deepClone } from 'vs/base/common/objects';
-import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
+import { Schemas } from 'vs/base/common/network';
 
 function toEditorWithEncodingSupport(input: IEditorInput): IEncodingSupport {
 	if (input instanceof SideBySideEditorInput) {
@@ -813,7 +815,7 @@ export class ChangeModeAction extends Action {
 		const resource = toResource(activeEditor.input, { supportSideBySide: true });
 
 		let hasLanguageSupport = !!resource;
-		if (resource.scheme === 'untitled' && !this.untitledEditorService.hasAssociatedFilePath(resource)) {
+		if (resource.scheme === Schemas.untitled && !this.untitledEditorService.hasAssociatedFilePath(resource)) {
 			hasLanguageSupport = false; // no configuration for untitled resources (e.g. "Untitled-1")
 		}
 
@@ -910,7 +912,7 @@ export class ChangeModeAction extends Action {
 			// Change mode for active editor
 			activeEditor = this.editorService.getActiveEditor();
 			const codeOrDiffEditor = getCodeOrDiffEditor(activeEditor);
-			const models: IModel[] = [];
+			const models: ITextModel[] = [];
 			if (codeOrDiffEditor.codeEditor) {
 				const codeEditorModel = codeOrDiffEditor.codeEditor.getModel();
 				if (codeEditorModel) {

@@ -23,7 +23,7 @@ import { IConfigurationService } from 'vs/platform/configuration/common/configur
 import URI from 'vs/base/common/uri';
 import { IEditorGroupService } from 'vs/workbench/services/group/common/groupService';
 import { ISCMService, ISCMRepository } from 'vs/workbench/services/scm/common/scm';
-import { ModelDecorationOptions } from 'vs/editor/common/model/textModelWithDecorations';
+import { ModelDecorationOptions } from 'vs/editor/common/model/textModel';
 import { registerThemingParticipant, ITheme, ICssStyleCollector, themeColorFromId, IThemeService } from 'vs/platform/theme/common/themeService';
 import { registerColor } from 'vs/platform/theme/common/colorRegistry';
 import { localize } from 'vs/nls';
@@ -46,11 +46,13 @@ import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { basename } from 'vs/base/common/paths';
 import { MenuId, IMenuService, IMenu, MenuItemAction } from 'vs/platform/actions/common/actions';
 import { fillInActions, MenuItemActionItem } from 'vs/platform/actions/browser/menuItemActionItem';
-import { IChange, IEditorModel, ScrollType, IEditorContribution, OverviewRulerLane, IModel, IModelDecorationOptions } from 'vs/editor/common/editorCommon';
+import { IChange, IEditorModel, ScrollType, IEditorContribution } from 'vs/editor/common/editorCommon';
+import { OverviewRulerLane, ITextModel, IModelDecorationOptions } from 'vs/editor/common/model';
 import { sortedDiff, firstIndex } from 'vs/base/common/arrays';
 import { IMarginData } from 'vs/editor/browser/controller/mouseTarget';
 import { ICodeEditorService } from 'vs/editor/browser/services/codeEditorService';
 import { ISplice } from 'vs/base/common/sequence';
+import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
 
 // TODO@Joao
 // Need to subclass MenuItemActionItem in order to respect
@@ -196,7 +198,8 @@ class DirtyDiffWidget extends PeekViewWidget {
 		@IMenuService menuService: IMenuService,
 		@IKeybindingService private keybindingService: IKeybindingService,
 		@IMessageService private messageService: IMessageService,
-		@IContextKeyService contextKeyService: IContextKeyService
+		@IContextKeyService contextKeyService: IContextKeyService,
+		@IContextMenuService private contextMenuService: IContextMenuService
 	) {
 		super(editor, { isResizeable: true, frameWidth: 1, keepEditorSelection: true });
 
@@ -270,7 +273,7 @@ class DirtyDiffWidget extends PeekViewWidget {
 		this._actionbarWidget.push([previous, next], { label: false, icon: true });
 
 		const actions: IAction[] = [];
-		fillInActions(this.menu, { shouldForwardArgs: true }, actions);
+		fillInActions(this.menu, { shouldForwardArgs: true }, actions, this.contextMenuService);
 		this._actionbarWidget.push(actions, { label: false, icon: true });
 	}
 
@@ -287,7 +290,7 @@ class DirtyDiffWidget extends PeekViewWidget {
 			return undefined;
 		}
 
-		return new DiffMenuItemActionItem(action, this.keybindingService, this.messageService);
+		return new DiffMenuItemActionItem(action, this.keybindingService, this.messageService, this.contextMenuService);
 	}
 
 	protected _fillBody(container: HTMLElement): void {
@@ -430,6 +433,76 @@ export class ShowNextChangeAction extends EditorAction {
 }
 registerEditorAction(ShowNextChangeAction);
 
+export class MoveToPreviousChangeAction extends EditorAction {
+
+	constructor() {
+		super({
+			id: 'workbench.action.editor.previousChange',
+			label: nls.localize('move to previous change', "Move to Previous Change"),
+			alias: 'Move to Previous Change',
+			precondition: null,
+			kbOpts: { kbExpr: EditorContextKeys.textFocus, primary: KeyMod.Shift | KeyMod.Alt | KeyCode.F5 }
+		});
+	}
+
+	run(accessor: ServicesAccessor, editor: ICodeEditor): void {
+		const outerEditor = getOuterEditorFromDiffEditor(accessor);
+
+		if (!outerEditor) {
+			return;
+		}
+
+		const controller = DirtyDiffController.get(outerEditor);
+
+		if (!controller || !controller.modelRegistry) {
+			return;
+		}
+
+		const lineNumber = outerEditor.getPosition().lineNumber;
+		const model = controller.modelRegistry.getModel(outerEditor.getModel());
+		const index = model.findPreviousClosestChange(lineNumber, false);
+		const change = model.changes[index];
+
+		outerEditor.setPosition(new Position(change.modifiedStartLineNumber, 1));
+	}
+}
+registerEditorAction(MoveToPreviousChangeAction);
+
+export class MoveToNextChangeAction extends EditorAction {
+
+	constructor() {
+		super({
+			id: 'workbench.action.editor.nextChange',
+			label: nls.localize('move to next change', "Move to Next Change"),
+			alias: 'Move to Next Change',
+			precondition: null,
+			kbOpts: { kbExpr: EditorContextKeys.textFocus, primary: KeyMod.Alt | KeyCode.F5 }
+		});
+	}
+
+	run(accessor: ServicesAccessor, editor: ICodeEditor): void {
+		const outerEditor = getOuterEditorFromDiffEditor(accessor);
+
+		if (!outerEditor) {
+			return;
+		}
+
+		const controller = DirtyDiffController.get(outerEditor);
+
+		if (!controller || !controller.modelRegistry) {
+			return;
+		}
+
+		const lineNumber = outerEditor.getPosition().lineNumber;
+		const model = controller.modelRegistry.getModel(outerEditor.getModel());
+		const index = model.findNextClosestChange(lineNumber, false);
+		const change = model.changes[index];
+
+		outerEditor.setPosition(new Position(change.modifiedStartLineNumber, 1));
+	}
+}
+registerEditorAction(MoveToNextChangeAction);
+
 KeybindingsRegistry.registerCommandAndKeybindingRule({
 	id: 'closeDirtyDiff',
 	weight: KeybindingsRegistry.WEIGHT.editorContrib(50),
@@ -501,7 +574,7 @@ export class DirtyDiffController implements IEditorContribution {
 		}
 
 		if (typeof lineNumber === 'number' || this.currentIndex === -1) {
-			this.currentIndex = this.findNextClosestChange(typeof lineNumber === 'number' ? lineNumber : this.editor.getPosition().lineNumber);
+			this.currentIndex = this.model.findNextClosestChange(typeof lineNumber === 'number' ? lineNumber : this.editor.getPosition().lineNumber);
 		} else {
 			this.currentIndex = rot(this.currentIndex + 1, this.model.changes.length);
 		}
@@ -515,7 +588,7 @@ export class DirtyDiffController implements IEditorContribution {
 		}
 
 		if (typeof lineNumber === 'number' || this.currentIndex === -1) {
-			this.currentIndex = this.findPreviousClosestChange(typeof lineNumber === 'number' ? lineNumber : this.editor.getPosition().lineNumber);
+			this.currentIndex = this.model.findPreviousClosestChange(typeof lineNumber === 'number' ? lineNumber : this.editor.getPosition().lineNumber);
 		} else {
 			this.currentIndex = rot(this.currentIndex - 1, this.model.changes.length);
 		}
@@ -675,30 +748,6 @@ export class DirtyDiffController implements IEditorContribution {
 		}
 	}
 
-	private findNextClosestChange(lineNumber: number): number {
-		for (let i = 0; i < this.model.changes.length; i++) {
-			const change = this.model.changes[i];
-
-			if (lineIntersectsChange(lineNumber, change)) {
-				return i;
-			}
-		}
-
-		return 0;
-	}
-
-	private findPreviousClosestChange(lineNumber: number): number {
-		for (let i = this.model.changes.length - 1; i >= 0; i--) {
-			const change = this.model.changes[i];
-
-			if (change.modifiedStartLineNumber <= lineNumber) {
-				return i;
-			}
-		}
-
-		return 0;
-	}
-
 	dispose(): void {
 		return;
 	}
@@ -756,7 +805,7 @@ class DirtyDiffDecorator {
 	private disposables: IDisposable[] = [];
 
 	constructor(
-		private editorModel: IModel,
+		private editorModel: ITextModel,
 		private model: DirtyDiffModel,
 		@IConfigurationService configurationService: IConfigurationService
 	) {
@@ -845,9 +894,9 @@ function compareChanges(a: IChange, b: IChange): number {
 
 export class DirtyDiffModel {
 
-	private _originalModel: IModel;
-	get original(): IModel { return this._originalModel; }
-	get modified(): IModel { return this._editorModel; }
+	private _originalModel: ITextModel;
+	get original(): ITextModel { return this._originalModel; }
+	get modified(): ITextModel { return this._editorModel; }
 
 	private diffDelayer: ThrottledDelayer<IChange[]>;
 	private _originalURIPromise: TPromise<URI>;
@@ -863,7 +912,7 @@ export class DirtyDiffModel {
 	}
 
 	constructor(
-		private _editorModel: IModel,
+		private _editorModel: ITextModel,
 		@ISCMService private scmService: ISCMService,
 		@IEditorWorkerService private editorWorkerService: IEditorWorkerService,
 		@ITextModelService private textModelResolverService: ITextModelService,
@@ -978,6 +1027,42 @@ export class DirtyDiffModel {
 		return null;
 	}
 
+	findNextClosestChange(lineNumber: number, inclusive = true): number {
+		for (let i = 0; i < this.changes.length; i++) {
+			const change = this.changes[i];
+
+			if (inclusive) {
+				if (getModifiedEndLineNumber(change) >= lineNumber) {
+					return i;
+				}
+			} else {
+				if (change.modifiedStartLineNumber > lineNumber) {
+					return i;
+				}
+			}
+		}
+
+		return 0;
+	}
+
+	findPreviousClosestChange(lineNumber: number, inclusive = true): number {
+		for (let i = this.changes.length - 1; i >= 0; i--) {
+			const change = this.changes[i];
+
+			if (inclusive) {
+				if (change.modifiedStartLineNumber <= lineNumber) {
+					return i;
+				}
+			} else {
+				if (getModifiedEndLineNumber(change) < lineNumber) {
+					return i;
+				}
+			}
+		}
+
+		return this.changes.length - 1;
+	}
+
 	dispose(): void {
 		this.disposables = dispose(this.disposables);
 
@@ -1007,7 +1092,7 @@ class DirtyDiffItem {
 export class DirtyDiffWorkbenchController implements ext.IWorkbenchContribution, IModelRegistry {
 
 	private enabled = false;
-	private models: IModel[] = [];
+	private models: ITextModel[] = [];
 	private items: { [modelId: string]: DirtyDiffItem; } = Object.create(null);
 	private transientDisposables: IDisposable[] = [];
 	private disposables: IDisposable[] = [];
@@ -1087,19 +1172,19 @@ export class DirtyDiffWorkbenchController implements ext.IWorkbenchContribution,
 		this.models = models;
 	}
 
-	private onModelVisible(editorModel: IModel): void {
+	private onModelVisible(editorModel: ITextModel): void {
 		const model = this.instantiationService.createInstance(DirtyDiffModel, editorModel);
 		const decorator = new DirtyDiffDecorator(editorModel, model, this.configurationService);
 
 		this.items[editorModel.id] = new DirtyDiffItem(model, decorator);
 	}
 
-	private onModelInvisible(editorModel: IModel): void {
+	private onModelInvisible(editorModel: ITextModel): void {
 		this.items[editorModel.id].dispose();
 		delete this.items[editorModel.id];
 	}
 
-	getModel(editorModel: IModel): DirtyDiffModel | null {
+	getModel(editorModel: ITextModel): DirtyDiffModel | null {
 		const item = this.items[editorModel.id];
 
 		if (!item) {

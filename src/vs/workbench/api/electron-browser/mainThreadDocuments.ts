@@ -16,8 +16,9 @@ import { IUntitledEditorService } from 'vs/workbench/services/untitled/common/un
 import { ExtHostContext, MainThreadDocumentsShape, ExtHostDocumentsShape, IExtHostContext } from '../node/extHost.protocol';
 import { ITextModelService } from 'vs/editor/common/services/resolverService';
 import { MainThreadDocumentsAndEditors } from './mainThreadDocumentsAndEditors';
-import * as editorCommon from 'vs/editor/common/editorCommon';
 import { ITextEditorModel } from 'vs/workbench/common/editor';
+import { ITextModel } from 'vs/editor/common/model';
+import { Schemas } from 'vs/base/common/network';
 
 export class BoundModelReferenceCollection {
 
@@ -104,17 +105,17 @@ export class MainThreadDocuments implements MainThreadDocumentsShape {
 
 		this._toDispose.push(textFileService.models.onModelSaved(e => {
 			if (this._shouldHandleFileEvent(e)) {
-				this._proxy.$acceptModelSaved(e.resource.toString());
+				this._proxy.$acceptModelSaved(e.resource);
 			}
 		}));
 		this._toDispose.push(textFileService.models.onModelReverted(e => {
 			if (this._shouldHandleFileEvent(e)) {
-				this._proxy.$acceptDirtyStateChanged(e.resource.toString(), false);
+				this._proxy.$acceptDirtyStateChanged(e.resource, false);
 			}
 		}));
 		this._toDispose.push(textFileService.models.onModelDirty(e => {
 			if (this._shouldHandleFileEvent(e)) {
-				this._proxy.$acceptDirtyStateChanged(e.resource.toString(), true);
+				this._proxy.$acceptDirtyStateChanged(e.resource, true);
 			}
 		}));
 
@@ -134,7 +135,7 @@ export class MainThreadDocuments implements MainThreadDocumentsShape {
 		return model && !model.isTooLargeForHavingARichMode();
 	}
 
-	private _onModelAdded(model: editorCommon.IModel): void {
+	private _onModelAdded(model: ITextModel): void {
 		// Same filter as in mainThreadEditorsTracker
 		if (model.isTooLargeForHavingARichMode()) {
 			// don't synchronize too large models
@@ -143,27 +144,27 @@ export class MainThreadDocuments implements MainThreadDocumentsShape {
 		let modelUrl = model.uri;
 		this._modelIsSynced[modelUrl.toString()] = true;
 		this._modelToDisposeMap[modelUrl.toString()] = model.onDidChangeContent((e) => {
-			this._proxy.$acceptModelChanged(modelUrl.toString(), e, this._textFileService.isDirty(modelUrl));
+			this._proxy.$acceptModelChanged(modelUrl, e, this._textFileService.isDirty(modelUrl));
 		});
 	}
 
-	private _onModelModeChanged(event: { model: editorCommon.IModel; oldModeId: string; }): void {
+	private _onModelModeChanged(event: { model: ITextModel; oldModeId: string; }): void {
 		let { model, oldModeId } = event;
 		let modelUrl = model.uri;
 		if (!this._modelIsSynced[modelUrl.toString()]) {
 			return;
 		}
-		this._proxy.$acceptModelModeChanged(model.uri.toString(), oldModeId, model.getLanguageIdentifier().language);
+		this._proxy.$acceptModelModeChanged(model.uri, oldModeId, model.getLanguageIdentifier().language);
 	}
 
-	private _onModelRemoved(modelUrl: string): void {
-
-		if (!this._modelIsSynced[modelUrl]) {
+	private _onModelRemoved(modelUrl: URI): void {
+		let strModelUrl = modelUrl.toString();
+		if (!this._modelIsSynced[strModelUrl]) {
 			return;
 		}
-		delete this._modelIsSynced[modelUrl];
-		this._modelToDisposeMap[modelUrl].dispose();
-		delete this._modelToDisposeMap[modelUrl];
+		delete this._modelIsSynced[strModelUrl];
+		this._modelToDisposeMap[strModelUrl].dispose();
+		delete this._modelToDisposeMap[strModelUrl];
 	}
 
 	// --- from extension host process
@@ -180,10 +181,10 @@ export class MainThreadDocuments implements MainThreadDocumentsShape {
 
 		let promise: TPromise<boolean>;
 		switch (uri.scheme) {
-			case 'untitled':
+			case Schemas.untitled:
 				promise = this._handleUnititledScheme(uri);
 				break;
-			case 'file':
+			case Schemas.file:
 			default:
 				promise = this._handleAsResourceInput(uri);
 				break;
@@ -212,7 +213,7 @@ export class MainThreadDocuments implements MainThreadDocumentsShape {
 	}
 
 	private _handleUnititledScheme(uri: URI): TPromise<boolean> {
-		let asFileUri = uri.with({ scheme: 'file' });
+		let asFileUri = uri.with({ scheme: Schemas.file });
 		return this._fileService.resolveFile(asFileUri).then(stats => {
 			// don't create a new file ontop of an existing file
 			return TPromise.wrapError<boolean>(new Error('file already exists on disk'));
@@ -227,7 +228,7 @@ export class MainThreadDocuments implements MainThreadDocumentsShape {
 				throw new Error(`expected URI ${resource.toString()} to have come to LIFE`);
 			}
 
-			this._proxy.$acceptDirtyStateChanged(resource.toString(), true); // mark as dirty
+			this._proxy.$acceptDirtyStateChanged(resource, true); // mark as dirty
 
 			return resource;
 		});

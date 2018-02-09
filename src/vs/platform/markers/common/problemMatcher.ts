@@ -42,8 +42,29 @@ export module FileLocationKind {
 	}
 }
 
+
+export enum ProblemLocationKind {
+	File,
+	Location
+}
+
+export module ProblemLocationKind {
+	export function fromString(value: string): ProblemLocationKind {
+		value = value.toLowerCase();
+		if (value === 'file') {
+			return ProblemLocationKind.File;
+		} else if (value === 'location') {
+			return ProblemLocationKind.Location;
+		} else {
+			return undefined;
+		}
+	}
+}
+
 export interface ProblemPattern {
 	regexp: RegExp;
+
+	kind?: ProblemLocationKind;
 
 	file?: number;
 
@@ -138,6 +159,7 @@ interface Location {
 }
 
 interface ProblemData {
+	kind?: ProblemLocationKind;
 	file?: string;
 	location?: string;
 	line?: string;
@@ -245,24 +267,28 @@ abstract class AbstractLineMatcher implements ILineMatcher {
 	}
 
 	protected getMarkerMatch(data: ProblemData): ProblemMatch {
-		let location = this.getLocation(data);
-		if (data.file && location && data.message) {
-			let marker: IMarkerData = {
-				severity: this.getSeverity(data),
-				startLineNumber: location.startLineNumber,
-				startColumn: location.startCharacter,
-				endLineNumber: location.startLineNumber,
-				endColumn: location.endCharacter,
-				message: data.message
-			};
-			if (!Types.isUndefined(data.code)) {
-				marker.code = data.code;
+		try {
+			let location = this.getLocation(data);
+			if (data.file && location && data.message) {
+				let marker: IMarkerData = {
+					severity: this.getSeverity(data),
+					startLineNumber: location.startLineNumber,
+					startColumn: location.startCharacter,
+					endLineNumber: location.startLineNumber,
+					endColumn: location.endCharacter,
+					message: data.message
+				};
+				if (!Types.isUndefined(data.code)) {
+					marker.code = data.code;
+				}
+				return {
+					description: this.matcher,
+					resource: this.getResource(data.file),
+					marker: marker
+				};
 			}
-			return {
-				description: this.matcher,
-				resource: this.getResource(data.file),
-				marker: marker
-			};
+		} catch (err) {
+			console.error(`Failed to convert problem data into match: ${JSON.stringify(data)}`);
 		}
 		return undefined;
 	}
@@ -353,6 +379,9 @@ class SingleLineMatcher extends AbstractLineMatcher {
 	public handle(lines: string[], start: number = 0): HandleResult {
 		Assert.ok(lines.length - start === 1);
 		let data: ProblemData = Object.create(null);
+		if (this.pattern.kind) {
+			data.kind = this.pattern.kind;
+		}
 		let matches = this.pattern.regexp.exec(lines[start]);
 		if (matches) {
 			this.fillProblemData(data, this.pattern, matches);
@@ -387,6 +416,7 @@ class MultiLineMatcher extends AbstractLineMatcher {
 		Assert.ok(lines.length - start === this.patterns.length);
 		this.data = Object.create(null);
 		let data = this.data;
+		data.kind = this.patterns[0].kind;
 		for (let i = 0; i < this.patterns.length; i++) {
 			let pattern = this.patterns[i];
 			let matches = pattern.regexp.exec(lines[i + start]);
@@ -430,6 +460,14 @@ export namespace Config {
 		* executed task.
 		*/
 		regexp?: string;
+
+		/**
+		* Whether the pattern matches a whole file, or a location (file/line)
+		*
+		* The default is to match for a location. Only valid on the
+		* first problem pattern in a multi line problem matcher.
+		*/
+		kind?: string;
 
 		/**
 		* The match group index of the filename.
@@ -696,7 +734,7 @@ export namespace Config {
 	}
 }
 
-class ProblemPatternParser extends Parser {
+export class ProblemPatternParser extends Parser {
 
 	constructor(logger: IProblemReporter) {
 		super(logger);
@@ -724,6 +762,9 @@ class ProblemPatternParser extends Parser {
 
 	private createSingleProblemPattern(value: Config.ProblemPattern): ProblemPattern {
 		let result = this.doCreateSingleProblemPattern(value, true);
+		if (result.kind === undefined) {
+			result.kind = ProblemLocationKind.Location;
+		}
 		return this.validateProblemPattern([result]) ? result : null;
 	}
 
@@ -748,13 +789,19 @@ class ProblemPatternParser extends Parser {
 			}
 			result.push(pattern);
 		}
+		if (result[0].kind === undefined) {
+			result[0].kind = ProblemLocationKind.Location;
+		}
 		return this.validateProblemPattern(result) ? result : null;
 	}
 
 	private doCreateSingleProblemPattern(value: Config.ProblemPattern, setDefaults: boolean): ProblemPattern {
 		let result: ProblemPattern = {
-			regexp: this.createRegularExpression(value.regexp)
+			regexp: this.createRegularExpression(value.regexp),
 		};
+		if (value.kind) {
+			result.kind = ProblemLocationKind.fromString(value.kind);
+		}
 
 		function copyProperty(result: ProblemPattern, source: Config.ProblemPattern, resultKey: keyof ProblemPattern, sourceKey: keyof Config.ProblemPattern) {
 			let value = source[sourceKey];
@@ -775,7 +822,7 @@ class ProblemPatternParser extends Parser {
 			result.loop = value.loop;
 		}
 		if (setDefaults) {
-			if (result.location) {
+			if (result.location || result.kind === ProblemLocationKind.File) {
 				let defaultValue: Partial<ProblemPattern> = {
 					file: 1,
 					message: 0
@@ -797,7 +844,12 @@ class ProblemPatternParser extends Parser {
 	private validateProblemPattern(values: ProblemPattern[]): boolean {
 		let file: boolean, message: boolean, location: boolean, line: boolean;
 		let regexp: number = 0;
-		values.forEach(pattern => {
+		let locationKind = (values[0].kind === undefined) ? ProblemLocationKind.Location : values[0].kind;
+
+		values.forEach((pattern, i) => {
+			if (i !== 0 && pattern.kind) {
+				this.error(localize('ProblemPatternParser.problemPattern.kindProperty.notFirst', 'The problem pattern is invalid. The kind property must be provided only in the first element'));
+			}
 			file = file || !Types.isUndefined(pattern.file);
 			message = message || !Types.isUndefined(pattern.message);
 			location = location || !Types.isUndefined(pattern.location);
@@ -810,8 +862,12 @@ class ProblemPatternParser extends Parser {
 			this.error(localize('ProblemPatternParser.problemPattern.missingRegExp', 'The problem pattern is missing a regular expression.'));
 			return false;
 		}
-		if (!(file && message && (location || line))) {
-			this.error(localize('ProblemPatternParser.problemPattern.missingProperty', 'The problem pattern is invalid. It must have at least a file, message and line or location match group.'));
+		if (!(file && message)) {
+			this.error(localize('ProblemPatternParser.problemPattern.missingProperty', 'The problem pattern is invalid. It must have at least have a file and a message.'));
+			return false;
+		}
+		if (locationKind === ProblemLocationKind.Location && !(location || line)) {
+			this.error(localize('ProblemPatternParser.problemPattern.missingLocation', 'The problem pattern is invalid. It must either have kind: "file" or have a line or location match group.'));
 			return false;
 		}
 		return true;
@@ -876,6 +932,10 @@ export namespace Schemas {
 				type: 'string',
 				description: localize('ProblemPatternSchema.regexp', 'The regular expression to find an error, warning or info in the output.')
 			},
+			kind: {
+				type: 'string',
+				description: localize('ProblemPatternSchema.kind', 'whether the pattern matches a location (file and line) or only a file.')
+			},
 			file: {
 				type: 'integer',
 				description: localize('ProblemPatternSchema.file', 'The match group index of the filename. If omitted 1 is used.')
@@ -927,7 +987,7 @@ export namespace Schemas {
 	};
 
 
-	export const MultLileProblemPattern: IJSONSchema = {
+	export const MultiLineProblemPattern: IJSONSchema = {
 		type: 'array',
 		items: ProblemPattern
 	};
@@ -1026,6 +1086,7 @@ class ProblemPatternRegistryImpl implements IProblemPatternRegistry {
 	private fillDefaults(): void {
 		this.add('msCompile', {
 			regexp: /^(?:\s+\d+\>)?([^\s].*)\((\d+|\d+,\d+|\d+,\d+,\d+,\d+)\)\s*:\s+(error|warning|info)\s+(\w{1,2}\d+)\s*:\s*(.*)$/,
+			kind: ProblemLocationKind.Location,
 			file: 1,
 			location: 2,
 			severity: 3,
@@ -1034,6 +1095,7 @@ class ProblemPatternRegistryImpl implements IProblemPatternRegistry {
 		});
 		this.add('gulp-tsc', {
 			regexp: /^([^\s].*)\((\d+|\d+,\d+|\d+,\d+,\d+,\d+)\):\s+(\d+)\s+(.*)$/,
+			kind: ProblemLocationKind.Location,
 			file: 1,
 			location: 2,
 			code: 3,
@@ -1041,6 +1103,7 @@ class ProblemPatternRegistryImpl implements IProblemPatternRegistry {
 		});
 		this.add('cpp', {
 			regexp: /^([^\s].*)\((\d+|\d+,\d+|\d+,\d+,\d+,\d+)\):\s+(error|warning|info)\s+(C\d+)\s*:\s*(.*)$/,
+			kind: ProblemLocationKind.Location,
 			file: 1,
 			location: 2,
 			severity: 3,
@@ -1049,6 +1112,7 @@ class ProblemPatternRegistryImpl implements IProblemPatternRegistry {
 		});
 		this.add('csc', {
 			regexp: /^([^\s].*)\((\d+|\d+,\d+|\d+,\d+,\d+,\d+)\):\s+(error|warning|info)\s+(CS\d+)\s*:\s*(.*)$/,
+			kind: ProblemLocationKind.Location,
 			file: 1,
 			location: 2,
 			severity: 3,
@@ -1057,6 +1121,7 @@ class ProblemPatternRegistryImpl implements IProblemPatternRegistry {
 		});
 		this.add('vb', {
 			regexp: /^([^\s].*)\((\d+|\d+,\d+|\d+,\d+,\d+,\d+)\):\s+(error|warning|info)\s+(BC\d+)\s*:\s*(.*)$/,
+			kind: ProblemLocationKind.Location,
 			file: 1,
 			location: 2,
 			severity: 3,
@@ -1065,12 +1130,14 @@ class ProblemPatternRegistryImpl implements IProblemPatternRegistry {
 		});
 		this.add('lessCompile', {
 			regexp: /^\s*(.*) in file (.*) line no. (\d+)$/,
+			kind: ProblemLocationKind.Location,
 			message: 1,
 			file: 2,
 			line: 3
 		});
 		this.add('jshint', {
 			regexp: /^(.*):\s+line\s+(\d+),\s+col\s+(\d+),\s(.+?)(?:\s+\((\w)(\d+)\))?$/,
+			kind: ProblemLocationKind.Location,
 			file: 1,
 			line: 2,
 			character: 3,
@@ -1081,6 +1148,7 @@ class ProblemPatternRegistryImpl implements IProblemPatternRegistry {
 		this.add('jshint-stylish', [
 			{
 				regexp: /^(.+)$/,
+				kind: ProblemLocationKind.Location,
 				file: 1
 			},
 			{
@@ -1096,6 +1164,7 @@ class ProblemPatternRegistryImpl implements IProblemPatternRegistry {
 		this.add('eslint-compact', {
 			regexp: /^(.+):\sline\s(\d+),\scol\s(\d+),\s(Error|Warning|Info)\s-\s(.+)\s\((.+)\)$/,
 			file: 1,
+			kind: ProblemLocationKind.Location,
 			line: 2,
 			character: 3,
 			severity: 4,
@@ -1105,6 +1174,7 @@ class ProblemPatternRegistryImpl implements IProblemPatternRegistry {
 		this.add('eslint-stylish', [
 			{
 				regexp: /^([^\s].*)$/,
+				kind: ProblemLocationKind.Location,
 				file: 1
 			},
 			{
@@ -1119,6 +1189,7 @@ class ProblemPatternRegistryImpl implements IProblemPatternRegistry {
 		]);
 		this.add('go', {
 			regexp: /^([^:]*: )?((.:)?[^:]*):(\d+)(:(\d+))?: (.*)$/,
+			kind: ProblemLocationKind.Location,
 			file: 2,
 			line: 4,
 			character: 6,
@@ -1369,7 +1440,7 @@ export namespace Schemas {
 				description: localize('PatternTypeSchema.name', 'The name of a contributed or predefined pattern')
 			},
 			Schemas.ProblemPattern,
-			Schemas.MultLileProblemPattern
+			Schemas.MultiLineProblemPattern
 		],
 		description: localize('PatternTypeSchema.description', 'A problem pattern or the name of a contributed or predefined problem pattern. Can be omitted if base is specified.')
 	};

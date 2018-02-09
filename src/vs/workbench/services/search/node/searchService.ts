@@ -22,6 +22,7 @@ import { IDisposable } from 'vs/base/common/lifecycle';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { onUnexpectedError } from 'vs/base/common/errors';
 import { Schemas } from 'vs/base/common/network';
+import { ILogService } from 'vs/platform/log/common/log';
 
 export class SearchService implements ISearchService {
 	public _serviceBrand: any;
@@ -35,7 +36,8 @@ export class SearchService implements ISearchService {
 		@IUntitledEditorService private untitledEditorService: IUntitledEditorService,
 		@IEnvironmentService environmentService: IEnvironmentService,
 		@ITelemetryService private telemetryService: ITelemetryService,
-		@IConfigurationService private configurationService: IConfigurationService
+		@IConfigurationService private configurationService: IConfigurationService,
+		@ILogService private logService: ILogService
 	) {
 		this.diskSearch = new DiskSearch(!environmentService.isBuilt || environmentService.verbose, /*timeout=*/undefined, environmentService.debugSearch);
 		this.registerSearchResultProvider(this.diskSearch);
@@ -88,6 +90,7 @@ export class SearchService implements ISearchService {
 			// Allow caller to register progress callback
 			process.nextTick(() => localResults.values().filter((res) => !!res).forEach(onProgress));
 
+			this.logService.trace('SearchService#search', JSON.stringify(query));
 			const providerPromises = this.searchProvider.map(provider => TPromise.wrap(provider.search(query)).then(e => e,
 				err => {
 					// TODO@joh
@@ -103,6 +106,10 @@ export class SearchService implements ISearchService {
 					} else {
 						// Progress
 						onProgress(<IProgress>progress);
+					}
+
+					if (progress.message) {
+						this.logService.debug('SearchService#search', progress.message);
 					}
 				}
 			));
@@ -151,14 +158,17 @@ export class SearchService implements ISearchService {
 				}
 
 				// Support untitled files
-				if (resource.scheme === 'untitled') {
+				if (resource.scheme === Schemas.untitled) {
 					if (!this.untitledEditorService.exists(resource)) {
 						return;
 					}
 				}
 
 				// Don't support other resource schemes than files for now
-				else if (resource.scheme !== 'file') {
+				// todo@remote
+				// why is that? we should search for resources from other
+				// schemes
+				else if (resource.scheme !== Schemas.file) {
 					return;
 				}
 
@@ -187,7 +197,7 @@ export class SearchService implements ISearchService {
 	private matches(resource: uri, query: ISearchQuery): boolean {
 		// file pattern
 		if (query.filePattern) {
-			if (resource.scheme !== 'file') {
+			if (resource.scheme !== Schemas.file) {
 				return false; // if we match on file pattern, we have to ignore non file resources
 			}
 
@@ -198,7 +208,7 @@ export class SearchService implements ISearchService {
 
 		// includes
 		if (query.includePattern) {
-			if (resource.scheme !== 'file') {
+			if (resource.scheme !== Schemas.file) {
 				return false; // if we match on file patterns, we have to ignore non file resources
 			}
 		}

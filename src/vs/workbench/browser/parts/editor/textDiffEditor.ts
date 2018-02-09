@@ -16,7 +16,7 @@ import types = require('vs/base/common/types');
 import { IDiffEditor } from 'vs/editor/browser/editorBrowser';
 import { IDiffEditorOptions, IEditorOptions } from 'vs/editor/common/config/editorOptions';
 import { BaseTextEditor, IEditorConfiguration } from 'vs/workbench/browser/parts/editor/textEditor';
-import { TextEditorOptions, EditorInput, EditorOptions, TEXT_DIFF_EDITOR_ID, IFileEditorInput } from 'vs/workbench/common/editor';
+import { TextEditorOptions, EditorInput, EditorOptions, TEXT_DIFF_EDITOR_ID, IEditorInputFactoryRegistry, Extensions as EditorInputExtensions } from 'vs/workbench/common/editor';
 import { ResourceEditorInput } from 'vs/workbench/common/editor/resourceEditorInput';
 import { DiffEditorInput } from 'vs/workbench/common/editor/diffEditorInput';
 import { DiffNavigator } from 'vs/editor/browser/widget/diffNavigator';
@@ -32,10 +32,10 @@ import { IWorkbenchEditorService, DelegatingWorkbenchEditorService } from 'vs/wo
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { IEditorGroupService } from 'vs/workbench/services/group/common/groupService';
 import { ITextFileService } from 'vs/workbench/services/textfile/common/textfiles';
-import { IEditorInput } from 'vs/platform/editor/common/editor';
 import { ScrollType } from 'vs/editor/common/editorCommon';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { IDisposable } from 'vs/base/common/lifecycle';
+import { Registry } from 'vs/platform/registry/common/platform';
 
 /**
  * The text editor that leverages the diff text editor for the editing experience.
@@ -205,12 +205,13 @@ export class TextDiffEditor extends BaseTextEditor {
 			const binaryDiffInput = new DiffEditorInput(input.getName(), input.getDescription(), originalInput, modifiedInput, true);
 
 			// Forward binary flag to input if supported
-			if (types.isFunction(((originalInput as IEditorInput) as IFileEditorInput).setForceOpenAsBinary)) {
-				((originalInput as IEditorInput) as IFileEditorInput).setForceOpenAsBinary();
+			const fileInputFactory = Registry.as<IEditorInputFactoryRegistry>(EditorInputExtensions.EditorInputFactories).getFileInputFactory();
+			if (fileInputFactory.isFileInput(originalInput)) {
+				originalInput.setForceOpenAsBinary();
 			}
 
-			if (types.isFunction(((modifiedInput as IEditorInput) as IFileEditorInput).setForceOpenAsBinary)) {
-				((modifiedInput as IEditorInput) as IFileEditorInput).setForceOpenAsBinary();
+			if (fileInputFactory.isFileInput(modifiedInput)) {
+				modifiedInput.setForceOpenAsBinary();
 			}
 
 			this.editorService.openEditor(binaryDiffInput, options, this.position).done(null, onUnexpectedError);
@@ -300,20 +301,6 @@ export class TextDiffEditor extends BaseTextEditor {
 		];
 	}
 
-	public getSecondaryActions(): IAction[] {
-		const actions = super.getSecondaryActions();
-
-		// Action to toggle editor mode from inline to side by side
-		const toggleEditorModeAction = new ToggleEditorModeAction(this);
-		toggleEditorModeAction.order = 50; // Closer to the end
-
-		actions.push(...[
-			toggleEditorModeAction
-		]);
-
-		return actions;
-	}
-
 	public getControl(): IDiffEditor {
 		return super.getControl() as IDiffEditor;
 	}
@@ -384,36 +371,5 @@ class ToggleIgnoreTrimWhitespaceAction extends Action {
 	public run(): TPromise<any> {
 		this._configurationService.updateValue(`diffEditor.ignoreTrimWhitespace`, !this._isChecked);
 		return null;
-	}
-}
-
-class ToggleEditorModeAction extends Action {
-	private static readonly ID = 'toggle.diff.editorMode';
-	private static readonly INLINE_LABEL = nls.localize('inlineDiffLabel', "Switch to Inline View");
-	private static readonly SIDEBYSIDE_LABEL = nls.localize('sideBySideDiffLabel', "Switch to Side by Side View");
-
-	constructor(private editor: TextDiffEditor) {
-		super(ToggleEditorModeAction.ID);
-	}
-
-	public get label(): string {
-		return ToggleEditorModeAction.isInlineMode(this.editor) ? ToggleEditorModeAction.SIDEBYSIDE_LABEL : ToggleEditorModeAction.INLINE_LABEL;
-	}
-
-	public run(): TPromise<boolean> {
-		const inlineModeActive = ToggleEditorModeAction.isInlineMode(this.editor);
-
-		const control = this.editor.getControl();
-		control.updateOptions(<IDiffEditorOptions>{
-			renderSideBySide: inlineModeActive
-		});
-
-		return TPromise.as(true);
-	}
-
-	private static isInlineMode(editor: TextDiffEditor): boolean {
-		const control = editor.getControl();
-
-		return control && !control.renderSideBySide;
 	}
 }

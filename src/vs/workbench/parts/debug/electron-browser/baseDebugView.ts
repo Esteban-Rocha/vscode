@@ -5,7 +5,7 @@
 
 import * as dom from 'vs/base/browser/dom';
 import { IExpression, IDebugService, IEnablement } from 'vs/workbench/parts/debug/common/debug';
-import { Expression, FunctionBreakpoint, Variable } from 'vs/workbench/parts/debug/common/debugModel';
+import { Expression, Variable } from 'vs/workbench/parts/debug/common/debugModel';
 import { IContextViewService, IContextMenuService } from 'vs/platform/contextview/browser/contextView';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { ITree, ContextMenuEvent, IActionProvider } from 'vs/base/parts/tree/browser/tree';
@@ -13,14 +13,15 @@ import { InputBox, IInputValidationOptions } from 'vs/base/browser/ui/inputbox/i
 import { attachInputBoxStyler } from 'vs/platform/theme/common/styler';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
 import { once } from 'vs/base/common/functional';
-import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
 import { IMenuService, MenuId, IMenu } from 'vs/platform/actions/common/actions';
-import { ClickBehavior, DefaultController } from 'vs/base/parts/tree/browser/treeDefaults';
+import { IControllerOptions } from 'vs/base/parts/tree/browser/treeDefaults';
 import { fillInActions } from 'vs/platform/actions/browser/menuItemActionItem';
 import { KeyCode } from 'vs/base/common/keyCodes';
 import { IKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { onUnexpectedError } from 'vs/base/common/errors';
+import { WorkbenchTreeController } from 'vs/platform/list/browser/listService';
+import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 
 export const MAX_VALUE_RENDER_LENGTH_IN_VIEWLET = 1024;
 export const twistiePixels = 20;
@@ -135,7 +136,6 @@ export function renderRenameBox(debugService: IDebugService, contextViewService:
 	});
 	const styler = attachInputBoxStyler(inputBox, themeService);
 
-	tree.setHighlight();
 	inputBox.value = options.initialValue ? options.initialValue : '';
 	inputBox.focus();
 	inputBox.select();
@@ -148,12 +148,10 @@ export function renderRenameBox(debugService: IDebugService, contextViewService:
 			disposed = true;
 			if (element instanceof Expression && renamed && inputBox.value) {
 				debugService.renameWatchExpression(element.getId(), inputBox.value);
+				debugService.getViewModel().setSelectedExpression(undefined);
 			} else if (element instanceof Expression && !element.name) {
 				debugService.removeWatchExpressions(element.getId());
-			} else if (element instanceof FunctionBreakpoint && inputBox.value) {
-				debugService.renameFunctionBreakpoint(element.getId(), renamed ? inputBox.value : element.name).done(null, onUnexpectedError);
-			} else if (element instanceof FunctionBreakpoint && !element.name) {
-				debugService.removeFunctionBreakpoints(element.getId()).done(null, onUnexpectedError);
+				debugService.getViewModel().setSelectedExpression(undefined);
 			} else if (element instanceof Variable) {
 				element.errorMessage = null;
 				if (renamed && element.value !== inputBox.value) {
@@ -167,7 +165,6 @@ export function renderRenameBox(debugService: IDebugService, contextViewService:
 				}
 			}
 
-			tree.clearHighlight();
 			tree.DOMFocus();
 			tree.setFocus(element);
 
@@ -191,20 +188,21 @@ export function renderRenameBox(debugService: IDebugService, contextViewService:
 	}));
 }
 
-export class BaseDebugController extends DefaultController {
+export class BaseDebugController extends WorkbenchTreeController {
 
 	private contributedContextMenu: IMenu;
 
 	constructor(
 		private actionProvider: IActionProvider,
 		menuId: MenuId,
+		options: IControllerOptions,
 		@IDebugService protected debugService: IDebugService,
-		@IWorkbenchEditorService protected editorService: IWorkbenchEditorService,
 		@IContextMenuService private contextMenuService: IContextMenuService,
 		@IContextKeyService contextKeyService: IContextKeyService,
-		@IMenuService menuService: IMenuService
+		@IMenuService menuService: IMenuService,
+		@IConfigurationService configurationService: IConfigurationService
 	) {
-		super({ clickBehavior: ClickBehavior.ON_MOUSE_UP, keyboardSupport: false });
+		super(options, configurationService);
 
 		this.contributedContextMenu = menuService.createMenu(menuId, contextKeyService);
 	}
@@ -226,7 +224,7 @@ export class BaseDebugController extends DefaultController {
 			this.contextMenuService.showContextMenu({
 				getAnchor: () => anchor,
 				getActions: () => this.actionProvider.getSecondaryActions(tree, element).then(actions => {
-					fillInActions(this.contributedContextMenu, { arg: this.getContext(element) }, actions);
+					fillInActions(this.contributedContextMenu, { arg: this.getContext(element) }, actions, this.contextMenuService);
 					return actions;
 				}),
 				onHide: (wasCancelled?: boolean) => {

@@ -14,7 +14,8 @@ import nls = require('vs/nls');
 import { TPromise } from 'vs/base/common/winjs.base';
 import { Action } from 'vs/base/common/actions';
 import * as objects from 'vs/base/common/objects';
-import { explorerItemToFileResource, ExplorerFolderContext, ExplorerRootContext } from 'vs/workbench/parts/files/common/files';
+import * as platform from 'vs/base/common/platform';
+import { ExplorerFolderContext, ExplorerRootContext } from 'vs/workbench/parts/files/common/files';
 import { SyncActionDescriptor, MenuRegistry, MenuId } from 'vs/platform/actions/common/actions';
 import { IWorkbenchActionRegistry, Extensions as ActionExtensions } from 'vs/workbench/common/actions';
 import { QuickOpenHandlerDescriptor, IQuickOpenRegistry, Extensions as QuickOpenExtensions } from 'vs/workbench/browser/quickopen';
@@ -35,18 +36,22 @@ import { ToggleCaseSensitiveKeybinding, ToggleRegexKeybinding, ToggleWholeWordKe
 import { ISearchWorkbenchService, SearchWorkbenchService } from 'vs/workbench/parts/search/common/searchModel';
 import { CommandsRegistry } from 'vs/platform/commands/common/commands';
 import { SearchViewlet } from 'vs/workbench/parts/search/browser/searchViewlet';
-import { IOutputChannelRegistry, Extensions as OutputExt } from 'vs/workbench/parts/output/common/output';
 import { defaultQuickOpenContextKey } from 'vs/workbench/browser/parts/quickopen/quickopen';
 import { OpenSymbolHandler } from 'vs/workbench/parts/search/browser/openSymbolHandler';
 import { OpenAnythingHandler } from 'vs/workbench/parts/search/browser/openAnythingHandler';
 import { registerLanguageCommand } from 'vs/editor/browser/editorExtensions';
 import { getWorkspaceSymbols } from 'vs/workbench/parts/search/common/search';
-import { illegalArgument, onUnexpectedError } from 'vs/base/common/errors';
+import { illegalArgument } from 'vs/base/common/errors';
 import { WorkbenchListFocusContextKey, IListService } from 'vs/platform/list/browser/listService';
 import URI from 'vs/base/common/uri';
 import { relative } from 'path';
 import { dirname } from 'vs/base/common/resources';
 import { ResourceContextKey } from 'vs/workbench/common/resources';
+import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
+import { IFileService } from 'vs/platform/files/common/files';
+import { distinct } from 'vs/base/common/arrays';
+import { getMultiSelectedResources } from 'vs/workbench/parts/files/browser/files';
+import { Schemas } from 'vs/base/common/network';
 
 registerSingleton(ISearchWorkbenchService, SearchWorkbenchService);
 replaceContributions();
@@ -188,50 +193,53 @@ CommandsRegistry.registerCommand({
 	handler: (accessor, resource?: URI) => {
 		const listService = accessor.get(IListService);
 		const viewletService = accessor.get(IViewletService);
+		const fileService = accessor.get(IFileService);
+		const resources = getMultiSelectedResources(resource, listService, accessor.get(IWorkbenchEditorService));
 
-		if (!URI.isUri(resource)) {
-			const lastFocusedList = listService.lastFocusedList;
-			const focus = lastFocusedList ? lastFocusedList.getFocus() : void 0;
-			if (focus) {
-				const file = explorerItemToFileResource(focus);
-				if (file) {
-					resource = file.isDirectory ? file.resource : dirname(file.resource);
-				}
-			}
-		}
+		return viewletService.openViewlet(Constants.VIEWLET_ID, true).then(viewlet => {
+			if (resources && resources.length) {
+				return fileService.resolveFiles(resources.map(resource => ({ resource }))).then(results => {
+					const folders: URI[] = [];
 
-		viewletService.openViewlet(Constants.VIEWLET_ID, true).then(viewlet => {
-			if (resource) {
-				(viewlet as SearchViewlet).searchInFolder(resource, (from, to) => relative(from, to));
+					results.forEach(result => {
+						if (result.success) {
+							folders.push(result.stat.isDirectory ? result.stat.resource : dirname(result.stat.resource));
+						}
+					});
+
+					(viewlet as SearchViewlet).searchInFolders(distinct(folders, folder => folder.toString()), (from, to) => relative(from, to));
+				});
 			}
-		}).done(null, onUnexpectedError);
+
+			return void 0;
+		});
 	}
 });
 
 const FIND_IN_WORKSPACE_ID = 'filesExplorer.findInWorkspace';
 CommandsRegistry.registerCommand({
 	id: FIND_IN_WORKSPACE_ID,
-	handler: (accessor, ) => {
+	handler: (accessor) => {
 		const viewletService = accessor.get(IViewletService);
 		return viewletService.openViewlet(Constants.VIEWLET_ID, true).then(viewlet => {
-			(viewlet as SearchViewlet).searchInFolder(null, (from, to) => relative(from, to));
+			(viewlet as SearchViewlet).searchInFolders(null, (from, to) => relative(from, to));
 		});
 	}
 });
 
 MenuRegistry.appendMenuItem(MenuId.ExplorerContext, {
-	group: 'navigation',
-	order: 50,
+	group: '4_search',
+	order: 10,
 	command: {
 		id: FIND_IN_FOLDER_ID,
 		title: nls.localize('findInFolder', "Find in Folder...")
 	},
-	when: ContextKeyExpr.and(ExplorerFolderContext, ResourceContextKey.Scheme.isEqualTo('file'))
+	when: ContextKeyExpr.and(ExplorerFolderContext, ResourceContextKey.Scheme.isEqualTo(Schemas.file)) // todo@remote
 });
 
 MenuRegistry.appendMenuItem(MenuId.ExplorerContext, {
-	group: 'navigation',
-	order: 20,
+	group: '4_search',
+	order: 10,
 	command: {
 		id: FIND_IN_WORKSPACE_ID,
 		title: nls.localize('findInWorkspace', "Find in Workspace...")
@@ -364,10 +372,6 @@ Registry.as<IQuickOpenRegistry>(QuickOpenExtensions.Quickopen).registerQuickOpen
 	)
 );
 
-// Search output channel
-const outputChannelRegistry = <IOutputChannelRegistry>Registry.as(OutputExt.OutputChannels);
-outputChannelRegistry.registerChannel(Constants.SEARCH_OUTPUT_CHANNEL_ID, nls.localize('searchOutputChannelTitle', "Search"));
-
 // Configuration
 const configurationRegistry = Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration);
 configurationRegistry.registerConfiguration({
@@ -421,6 +425,17 @@ configurationRegistry.registerConfiguration({
 			'type': 'boolean',
 			'description': nls.localize('search.followSymlinks', "Controls whether to follow symlinks while searching."),
 			'default': true
+		},
+		'search.smartCase': {
+			'type': 'boolean',
+			'description': nls.localize('search.smartCase', "Searches case-insensitively if the pattern is all lowercase, otherwise, searches case-sensitively"),
+			'default': false
+		},
+		'search.globalFindClipboard': {
+			'type': 'boolean',
+			'default': false,
+			'description': nls.localize('search.globalFindClipboard', "Controls if the Search Viewlet should read or modify the shared find clipboard on macOS"),
+			'included': platform.isMacintosh
 		}
 	}
 });

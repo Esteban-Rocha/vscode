@@ -6,12 +6,12 @@
 import 'vs/css!./media/panelviewlet';
 import * as nls from 'vs/nls';
 import { TPromise } from 'vs/base/common/winjs.base';
-import Event, { Emitter } from 'vs/base/common/event';
+import Event, { Emitter, filterEvent } from 'vs/base/common/event';
 import { ColorIdentifier, contrastBorder } from 'vs/platform/theme/common/colorRegistry';
 import { attachStyler, IColorMapping, IThemable } from 'vs/platform/theme/common/styler';
 import { SIDE_BAR_DRAG_AND_DROP_BACKGROUND, SIDE_BAR_SECTION_HEADER_FOREGROUND, SIDE_BAR_SECTION_HEADER_BACKGROUND } from 'vs/workbench/common/theme';
 import { Dimension, Builder } from 'vs/base/browser/builder';
-import { append, $, trackFocus } from 'vs/base/browser/dom';
+import { append, $, trackFocus, toggleClass } from 'vs/base/browser/dom';
 import { IDisposable, combinedDisposable } from 'vs/base/common/lifecycle';
 import { firstIndex } from 'vs/base/common/arrays';
 import { IAction, IActionRunner } from 'vs/base/common/actions';
@@ -25,6 +25,7 @@ import { IContextMenuService } from 'vs/platform/contextview/browser/contextView
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { PanelView, IPanelViewOptions, IPanelOptions, Panel } from 'vs/base/browser/ui/splitview/panelview';
+import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 
 export interface IPanelColors extends IColorMapping {
 	dropBackground?: ColorIdentifier;
@@ -48,17 +49,21 @@ export interface IViewletPanelOptions extends IPanelOptions {
 
 export abstract class ViewletPanel extends Panel {
 
+	private static AlwaysShowActionsConfig = 'workbench.panel.alwaysShowActions';
+
 	private _onDidFocus = new Emitter<void>();
 	readonly onDidFocus: Event<void> = this._onDidFocus.event;
 
 	protected actionRunner: IActionRunner;
 	protected toolbar: ToolBar;
+	private headerContainer: HTMLElement;
 
 	constructor(
 		readonly title: string,
 		options: IViewletPanelOptions,
 		@IKeybindingService protected keybindingService: IKeybindingService,
-		@IContextMenuService protected contextMenuService: IContextMenuService
+		@IContextMenuService protected contextMenuService: IContextMenuService,
+		@IConfigurationService protected readonly configurationService: IConfigurationService
 	) {
 		super(options);
 
@@ -74,6 +79,8 @@ export abstract class ViewletPanel extends Panel {
 	}
 
 	protected renderHeader(container: HTMLElement): void {
+		this.headerContainer = container;
+
 		this.renderHeaderTitle(container);
 
 		const actions = append(container, $('.actions'));
@@ -87,6 +94,10 @@ export abstract class ViewletPanel extends Panel {
 
 		this.disposables.push(this.toolbar);
 		this.updateActions();
+
+		const onDidRelevantConfigurationChange = filterEvent(this.configurationService.onDidChangeConfiguration, e => e.affectsConfiguration(ViewletPanel.AlwaysShowActionsConfig));
+		onDidRelevantConfigurationChange(this.updateActionsVisibility, this, this.disposables);
+		this.updateActionsVisibility();
 	}
 
 	protected renderHeaderTitle(container: HTMLElement): void {
@@ -100,6 +111,11 @@ export abstract class ViewletPanel extends Panel {
 	protected updateActions(): void {
 		this.toolbar.setActions(prepareActions(this.getActions()), prepareActions(this.getSecondaryActions()))();
 		this.toolbar.context = this.getActionsContext();
+	}
+
+	protected updateActionsVisibility(): void {
+		const shouldAlwaysShowActions = this.configurationService.getValue<boolean>('workbench.panel.alwaysShowActions');
+		toggleClass(this.headerContainer, 'actions-always-visible', shouldAlwaysShowActions);
 	}
 
 	getActions(): IAction[] {
@@ -134,7 +150,7 @@ interface IViewletPanelItem {
 
 export class PanelViewlet extends Viewlet {
 
-	protected lastFocusedPanel: ViewletPanel | undefined;
+	private lastFocusedPanel: ViewletPanel | undefined;
 	private panelItems: IViewletPanelItem[] = [];
 	private panelview: PanelView;
 
@@ -195,7 +211,12 @@ export class PanelViewlet extends Viewlet {
 		if (this.lastFocusedPanel) {
 			this.lastFocusedPanel.focus();
 		} else if (this.panelItems.length > 0) {
-			this.panelItems[0].panel.focus();
+			for (const { panel } of this.panelItems) {
+				if (panel.isExpanded()) {
+					panel.focus();
+					return;
+				}
+			}
 		}
 	}
 
@@ -213,8 +234,13 @@ export class PanelViewlet extends Viewlet {
 	addPanel(panel: ViewletPanel, size: number, index = this.panelItems.length - 1): void {
 		const disposables: IDisposable[] = [];
 		const onDidFocus = panel.onDidFocus(() => this.lastFocusedPanel = panel, null, disposables);
+		const onDidChange = panel.onDidChange(() => {
+			if (panel === this.lastFocusedPanel && !panel.isExpanded()) {
+				this.lastFocusedPanel = undefined;
+			}
+		}, null, disposables);
 		const styler = attachPanelStyler(panel, this.themeService);
-		const disposable = combinedDisposable([onDidFocus, styler]);
+		const disposable = combinedDisposable([onDidFocus, styler, onDidChange]);
 		const panelItem: IViewletPanelItem = { panel, disposable };
 
 		this.panelItems.splice(index, 0, panelItem);
