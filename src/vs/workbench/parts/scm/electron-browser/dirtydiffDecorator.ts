@@ -15,7 +15,6 @@ import Event, { Emitter, anyEvent as anyEvent, filterEvent, once } from 'vs/base
 import * as ext from 'vs/workbench/common/contributions';
 import { CodeEditor } from 'vs/editor/browser/codeEditor';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
-import { IMessageService, Severity } from 'vs/platform/message/common/message';
 import { ITextModelService } from 'vs/editor/common/services/resolverService';
 import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { IEditorWorkerService } from 'vs/editor/common/services/editorWorkerService';
@@ -53,6 +52,8 @@ import { IMarginData } from 'vs/editor/browser/controller/mouseTarget';
 import { ICodeEditorService } from 'vs/editor/browser/services/codeEditorService';
 import { ISplice } from 'vs/base/common/sequence';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
+import { createStyleSheet } from '../../../../base/browser/dom';
+import { INotificationService } from 'vs/platform/notification/common/notification';
 
 // TODO@Joao
 // Need to subclass MenuItemActionItem in order to respect
@@ -65,7 +66,7 @@ class DiffMenuItemActionItem extends MenuItemActionItem {
 		event.stopPropagation();
 
 		this.actionRunner.run(this._commandAction, this._context)
-			.done(undefined, err => this._messageService.show(Severity.Error, err));
+			.done(undefined, err => this._notificationService.error(err));
 	}
 }
 
@@ -197,7 +198,7 @@ class DirtyDiffWidget extends PeekViewWidget {
 		@IInstantiationService private instantiationService: IInstantiationService,
 		@IMenuService menuService: IMenuService,
 		@IKeybindingService private keybindingService: IKeybindingService,
-		@IMessageService private messageService: IMessageService,
+		@INotificationService private notificationService: INotificationService,
 		@IContextKeyService contextKeyService: IContextKeyService,
 		@IContextMenuService private contextMenuService: IContextMenuService
 	) {
@@ -290,7 +291,7 @@ class DirtyDiffWidget extends PeekViewWidget {
 			return undefined;
 		}
 
-		return new DiffMenuItemActionItem(action, this.keybindingService, this.messageService, this.contextMenuService);
+		return new DiffMenuItemActionItem(action, this.keybindingService, this.notificationService, this.contextMenuService);
 	}
 
 	protected _fillBody(container: HTMLElement): void {
@@ -460,10 +461,17 @@ export class MoveToPreviousChangeAction extends EditorAction {
 
 		const lineNumber = outerEditor.getPosition().lineNumber;
 		const model = controller.modelRegistry.getModel(outerEditor.getModel());
+
+		if (model.changes.length === 0) {
+			return;
+		}
+
 		const index = model.findPreviousClosestChange(lineNumber, false);
 		const change = model.changes[index];
 
-		outerEditor.setPosition(new Position(change.modifiedStartLineNumber, 1));
+		const position = new Position(change.modifiedStartLineNumber, 1);
+		outerEditor.setPosition(position);
+		outerEditor.revealPosition(position);
 	}
 }
 registerEditorAction(MoveToPreviousChangeAction);
@@ -495,10 +503,17 @@ export class MoveToNextChangeAction extends EditorAction {
 
 		const lineNumber = outerEditor.getPosition().lineNumber;
 		const model = controller.modelRegistry.getModel(outerEditor.getModel());
+
+		if (model.changes.length === 0) {
+			return;
+		}
+
 		const index = model.findNextClosestChange(lineNumber, false);
 		const change = model.changes[index];
 
-		outerEditor.setPosition(new Position(change.modifiedStartLineNumber, 1));
+		const position = new Position(change.modifiedStartLineNumber, 1);
+		outerEditor.setPosition(position);
+		outerEditor.revealPosition(position);
 	}
 }
 registerEditorAction(MoveToNextChangeAction);
@@ -789,8 +804,8 @@ class DirtyDiffDecorator {
 
 		if (options.overview) {
 			decorationOptions.overviewRuler = {
-				color: themeColorFromId(overviewRulerModifiedForeground),
-				darkColor: themeColorFromId(overviewRulerModifiedForeground),
+				color: themeColorFromId(foregroundColor),
+				darkColor: themeColorFromId(foregroundColor),
 				position: OverviewRulerLane.Left
 			};
 		}
@@ -1095,6 +1110,7 @@ export class DirtyDiffWorkbenchController implements ext.IWorkbenchContribution,
 	private models: ITextModel[] = [];
 	private items: { [modelId: string]: DirtyDiffItem; } = Object.create(null);
 	private transientDisposables: IDisposable[] = [];
+	private stylesheet: HTMLStyleElement;
 	private disposables: IDisposable[] = [];
 
 	constructor(
@@ -1103,9 +1119,16 @@ export class DirtyDiffWorkbenchController implements ext.IWorkbenchContribution,
 		@IInstantiationService private instantiationService: IInstantiationService,
 		@IConfigurationService private configurationService: IConfigurationService
 	) {
+		this.stylesheet = createStyleSheet();
+		this.disposables.push(toDisposable(() => this.stylesheet.parentElement.removeChild(this.stylesheet)));
+
 		const onDidChangeConfiguration = filterEvent(configurationService.onDidChangeConfiguration, e => e.affectsConfiguration('scm.diffDecorations'));
 		onDidChangeConfiguration(this.onDidChangeConfiguration, this, this.disposables);
 		this.onDidChangeConfiguration();
+
+		const onDidChangeDiffWidthConfiguration = filterEvent(configurationService.onDidChangeConfiguration, e => e.affectsConfiguration('scm.diffDecorationsGutterWidth'));
+		onDidChangeDiffWidthConfiguration(this.onDidChangeDiffWidthConfiguration, this);
+		this.onDidChangeDiffWidthConfiguration();
 	}
 
 	private onDidChangeConfiguration(): void {
@@ -1116,6 +1139,16 @@ export class DirtyDiffWorkbenchController implements ext.IWorkbenchContribution,
 		} else {
 			this.disable();
 		}
+	}
+
+	private onDidChangeDiffWidthConfiguration(): void {
+		let width = this.configurationService.getValue<number>('scm.diffDecorationsGutterWidth');
+
+		if (isNaN(width) || width <= 0 || width > 5) {
+			width = 3;
+		}
+
+		this.stylesheet.innerHTML = `.monaco-editor .dirty-diff-modified,.monaco-editor .dirty-diff-added{border-left-width:${width}px;}`;
 	}
 
 	private enable(): void {

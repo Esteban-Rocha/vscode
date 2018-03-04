@@ -13,12 +13,13 @@ import { localize } from 'vs/nls';
 import { IViewlet } from 'vs/workbench/common/viewlet';
 import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
 import { IDisposable } from 'vs/base/common/lifecycle';
+import { ThemeIcon } from 'vs/platform/theme/common/themeService';
 
 export class ViewLocation {
 
-	static readonly Explorer = new ViewLocation('explorer');
-	static readonly Debug = new ViewLocation('debug');
-	static readonly Extensions = new ViewLocation('extensions');
+	static readonly Explorer = new ViewLocation('workbench.view.explorer');
+	static readonly Debug = new ViewLocation('workbench.view.debug');
+	static readonly Extensions = new ViewLocation('workbench.view.extensions');
 
 	constructor(private _id: string) {
 	}
@@ -29,8 +30,8 @@ export class ViewLocation {
 
 	static getContributedViewLocation(value: string): ViewLocation {
 		switch (value) {
-			case ViewLocation.Explorer.id: return ViewLocation.Explorer;
-			case ViewLocation.Debug.id: return ViewLocation.Debug;
+			case 'explorer': return ViewLocation.Explorer;
+			case 'debug': return ViewLocation.Debug;
 		}
 		return void 0;
 	}
@@ -97,7 +98,7 @@ export const ViewsRegistry: IViewsRegistry = new class implements IViewsRegistry
 					this._viewLocations.push(viewDescriptor.location);
 				}
 				if (views.some(v => v.id === viewDescriptor.id)) {
-					throw new Error(localize('duplicateId', "A view with id `{0}` is already registered in the location `{1}`", viewDescriptor.id, viewDescriptor.location.id));
+					throw new Error(localize('duplicateId', "A view with id '{0}' is already registered in the location '{1}'", viewDescriptor.id, viewDescriptor.location.id));
 				}
 				views.push(viewDescriptor);
 			}
@@ -150,7 +151,7 @@ export const ViewsRegistry: IViewsRegistry = new class implements IViewsRegistry
 
 export interface IViewsViewlet extends IViewlet {
 
-	openView(id: string): void;
+	openView(id: string, focus?: boolean): TPromise<void>;
 
 }
 
@@ -158,7 +159,7 @@ export interface IViewsViewlet extends IViewlet {
 
 export interface ITreeViewer extends IDisposable {
 
-	readonly dataProvider: ITreeViewDataProvider;
+	dataProvider: ITreeViewDataProvider;
 
 	refresh(treeItems?: ITreeItem[]): TPromise<void>;
 
@@ -168,9 +169,11 @@ export interface ITreeViewer extends IDisposable {
 
 	layout(height: number): void;
 
-	render(container: HTMLElement);
+	show(container: HTMLElement);
 
 	getOptimalWidth(): number;
+
+	reveal(item: ITreeItem, parentChain: ITreeItem[], options: { select?: boolean }): TPromise<void>;
 }
 
 export interface ICustomViewDescriptor extends IViewDescriptor {
@@ -186,7 +189,7 @@ export interface ICustomViewsService {
 
 	getTreeViewer(id: string): ITreeViewer;
 
-	registerTreeViewDataProvider(id: string, ITreeViewDataProvider): void;
+	openView(id: string, focus?: boolean): TPromise<void>;
 }
 
 export type TreeViewItemHandleArg = {
@@ -206,13 +209,19 @@ export interface ITreeItem {
 
 	parentHandle: string;
 
+	collapsibleState: TreeItemCollapsibleState;
+
 	label?: string;
 
 	icon?: string;
 
 	iconDark?: string;
 
+	themeIcon?: ThemeIcon;
+
 	resourceUri?: UriComponents;
+
+	tooltip?: string;
 
 	contextValue?: string;
 
@@ -220,7 +229,6 @@ export interface ITreeItem {
 
 	children?: ITreeItem[];
 
-	collapsibleState?: TreeItemCollapsibleState;
 }
 
 export interface ITreeViewDataProvider {

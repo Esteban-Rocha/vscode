@@ -31,6 +31,8 @@ export enum ConfirmResult {
  */
 export const TEXT_DIFF_EDITOR_ID = 'workbench.editors.textDiffEditor';
 
+export const PREFERENCES_EDITOR_ID = 'workbench.editor.preferencesEditor';
+
 /**
  * Binary diff editor id.
  */
@@ -355,7 +357,7 @@ export interface IFileEditorInput extends IEditorInput, IEncodingSupport {
  */
 export class SideBySideEditorInput extends EditorInput {
 
-	public static ID: string = 'workbench.editorinputs.sidebysideEditorInput';
+	public static readonly ID: string = 'workbench.editorinputs.sidebysideEditorInput';
 
 	private _toUnbind: IDisposable[];
 
