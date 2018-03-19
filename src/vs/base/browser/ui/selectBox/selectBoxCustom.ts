@@ -7,7 +7,7 @@ import 'vs/css!./selectBoxCustom';
 
 import * as nls from 'vs/nls';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
-import Event, { Emitter, chain } from 'vs/base/common/event';
+import { Event, Emitter, chain } from 'vs/base/common/event';
 import { KeyCode, KeyCodeUtils } from 'vs/base/common/keyCodes';
 import { StandardKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import * as dom from 'vs/base/browser/dom';
@@ -78,7 +78,7 @@ export class SelectBoxList implements ISelectBoxDelegate, IDelegate<ISelectOptio
 	private options: string[];
 	private selected: number;
 	private disabledOptionIndex: number;
-	private _onDidSelect: Emitter<ISelectData>;
+	private readonly _onDidSelect: Emitter<ISelectData>;
 	private toDispose: IDisposable[];
 	private styles: ISelectBoxStyles;
 	private listRenderer: SelectListRenderer;
@@ -378,9 +378,12 @@ export class SelectBoxList implements ISelectBoxDelegate, IDelegate<ISelectOptio
 	}
 
 	private renderSelectDropDown(container: HTMLElement): IDisposable {
-		dom.append(container, this.selectDropDownContainer);
+		container.appendChild(this.selectDropDownContainer);
+
 		this.layoutSelectDropDown();
-		return null;
+		return {
+			dispose: () => container.removeChild(this.selectDropDownContainer) // remove to take out the CSS rules we add
+		};
 	}
 
 	private layoutSelectDropDown() {

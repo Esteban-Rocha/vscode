@@ -14,7 +14,7 @@ import product from 'vs/platform/node/product';
 import { IWindowsService, OpenContext, INativeOpenDialogOptions, IEnterWorkspaceResult, IMessageBoxResult } from 'vs/platform/windows/common/windows';
 import { IEnvironmentService, ParsedArgs } from 'vs/platform/environment/common/environment';
 import { shell, crashReporter, app, Menu, clipboard } from 'electron';
-import Event, { chain, fromNodeEventEmitter } from 'vs/base/common/event';
+import { Event, chain, fromNodeEventEmitter } from 'vs/base/common/event';
 import { IURLService } from 'vs/platform/url/common/url';
 import { ILifecycleService } from 'vs/platform/lifecycle/electron-main/lifecycleMain';
 import { IWindowsMainService, ISharedProcess } from 'vs/platform/windows/electron-main/windows';
@@ -24,7 +24,7 @@ import { ICommandAction } from 'vs/platform/actions/common/actions';
 import { Schemas } from 'vs/base/common/network';
 import { mnemonicButtonLabel } from 'vs/base/common/labels';
 import { isWindows } from 'vs/base/common/platform';
-import { ILogService } from '../../log/common/log';
+import { ILogService } from 'vs/platform/log/common/log';
 
 export class WindowsService implements IWindowsService, IDisposable {
 
