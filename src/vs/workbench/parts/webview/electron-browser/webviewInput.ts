@@ -5,72 +5,61 @@
 
 'use strict';
 
-import { TPromise } from 'vs/base/common/winjs.base';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
+import URI from 'vs/base/common/uri';
+import { TPromise } from 'vs/base/common/winjs.base';
+import { IEditorInput, IEditorModel, Position } from 'vs/platform/editor/common/editor';
 import { EditorInput, EditorModel } from 'vs/workbench/common/editor';
-import { IEditorModel, Position, IEditorInput } from 'vs/platform/editor/common/editor';
 import { Webview } from 'vs/workbench/parts/html/electron-browser/webview';
 import { IPartService, Parts } from 'vs/workbench/services/part/common/partService';
-import * as vscode from 'vscode';
-import URI from 'vs/base/common/uri';
+import { WebviewEvents, WebviewInputOptions, WebviewReviver } from './webviewService';
 
-export interface WebviewEvents {
-	onMessage?(message: any): void;
-	onDidChangePosition?(newPosition: Position): void;
-	onDispose?(): void;
-	onDidClickLink?(link: URI, options: vscode.WebviewOptions): void;
-}
 
-export interface WebviewInputOptions extends vscode.WebviewOptions {
-	tryRestoreScrollPosition?: boolean;
-}
-
-export class WebviewInput extends EditorInput {
+export class WebviewEditorInput extends EditorInput {
 	private static handlePool = 0;
 
-	private readonly _resource: URI;
+	public static readonly typeId = 'workbench.editors.webviewInput';
+
 	private _name: string;
 	private _options: WebviewInputOptions;
-	private _html: string;
+	private _html: string = '';
 	private _currentWebviewHtml: string = '';
-	private _events: WebviewEvents | undefined;
+	public _events: WebviewEvents | undefined;
 	private _container: HTMLElement;
 	private _webview: Webview | undefined;
 	private _webviewOwner: any;
 	private _webviewDisposables: IDisposable[] = [];
 	private _position?: Position;
 	private _scrollYPercentage: number = 0;
+	private _state: any;
+
+	private _revived: boolean = false;
+
 	public readonly extensionFolderPath: URI | undefined;
 
 	constructor(
-		resource: URI,
+		public readonly viewType: string,
 		name: string,
 		options: WebviewInputOptions,
-		html: string,
+		state: any,
 		events: WebviewEvents,
-		partService: IPartService,
-		extensionFolderPath?: string
+		extensionFolderPath: string | undefined,
+		public readonly reviver: WebviewReviver | undefined,
+		@IPartService private readonly _partService: IPartService,
 	) {
 		super();
-		this._resource = resource;
 		this._name = name;
 		this._options = options;
-		this._html = html;
 		this._events = events;
+		this._state = state;
 
 		if (extensionFolderPath) {
 			this.extensionFolderPath = URI.file(extensionFolderPath);
 		}
-
-		const id = WebviewInput.handlePool++;
-		this._container = document.createElement('div');
-		this._container.id = `webview-${id}`;
-
-		partService.getContainer(Parts.EDITOR_PART).appendChild(this._container);
 	}
 
 	public getTypeId(): string {
-		return 'webview';
+		return WebviewEditorInput.typeId;
 	}
 
 	public dispose() {
@@ -90,11 +79,19 @@ export class WebviewInput extends EditorInput {
 	}
 
 	public getResource(): URI {
-		return this._resource;
+		return null;
 	}
 
 	public getName(): string {
 		return this._name;
+	}
+
+	public getTitle() {
+		return this.getName();
+	}
+
+	public getDescription(): string {
+		return null;
 	}
 
 	public setName(value: string): void {
@@ -103,7 +100,7 @@ export class WebviewInput extends EditorInput {
 	}
 
 	matches(other: IEditorInput): boolean {
-		return other && other instanceof WebviewInput && other.getResource().fsPath === this.getResource().fsPath;
+		return other && other === this;
 	}
 
 	public get position(): Position | undefined {
@@ -114,7 +111,7 @@ export class WebviewInput extends EditorInput {
 		return this._html;
 	}
 
-	public setHtml(value: string): void {
+	public set html(value: string) {
 		if (value === this._currentWebviewHtml) {
 			return;
 		}
@@ -125,6 +122,14 @@ export class WebviewInput extends EditorInput {
 			this._webview.contents = value;
 			this._currentWebviewHtml = value;
 		}
+	}
+
+	public get state(): any {
+		return this._state;
+	}
+
+	public set state(value: any) {
+		this._state = value;
 	}
 
 	public get options(): WebviewInputOptions {
@@ -144,6 +149,12 @@ export class WebviewInput extends EditorInput {
 	}
 
 	public get container(): HTMLElement {
+		if (!this._container) {
+			const id = WebviewEditorInput.handlePool++;
+			this._container = document.createElement('div');
+			this._container.id = `webview-${id}`;
+			this._partService.getContainer(Parts.EDITOR_PART).appendChild(this._container);
+		}
 		return this._container;
 	}
 
@@ -210,10 +221,16 @@ export class WebviewInput extends EditorInput {
 		this._currentWebviewHtml = '';
 	}
 
-	public onDidChangePosition(position: Position) {
+	public onBecameActive(position: Position) {
+		this._position = position;
+
 		if (this._events && this._events.onDidChangePosition) {
 			this._events.onDidChangePosition(position);
 		}
-		this._position = position;
+
+		if (this.reviver && !this._revived) {
+			this._revived = true;
+			this.reviver.reviveWebview(this);
+		}
 	}
 }

@@ -37,6 +37,7 @@ export const CONTEXT_NOT_IN_DEBUG_REPL: ContextKeyExpr = CONTEXT_IN_DEBUG_REPL.t
 export const CONTEXT_ON_FIRST_DEBUG_REPL_LINE = new RawContextKey<boolean>('onFirstDebugReplLine', false);
 export const CONTEXT_ON_LAST_DEBUG_REPL_LINE = new RawContextKey<boolean>('onLastDebugReplLine', false);
 export const CONTEXT_BREAKPOINT_WIDGET_VISIBLE = new RawContextKey<boolean>('breakpointWidgetVisible', false);
+export const CONTEXT_IN_BREAKPOINT_WIDGET = new RawContextKey<boolean>('inBreakpointWidget', false);
 export const CONTEXT_BREAKPOINTS_FOCUSED = new RawContextKey<boolean>('breakpointsFocused', true);
 export const CONTEXT_WATCH_EXPRESSIONS_FOCUSED = new RawContextKey<boolean>('watchExpressionsFocused', true);
 export const CONTEXT_VARIABLES_FOCUSED = new RawContextKey<boolean>('variablesFocused', true);
@@ -139,8 +140,8 @@ export interface IProcess extends ITreeElement {
 	getName(includeRoot: boolean): string;
 	configuration: IConfig;
 	session: ISession;
-	sources: Map<string, Source>;
 	state: ProcessState;
+	getSourceForUri(modelUri: uri): Source;
 	getThread(threadId: number): IThread;
 	getAllThreads(): IThread[];
 	getSource(raw: DebugProtocol.Source): Source;
@@ -244,6 +245,8 @@ export interface IBaseBreakpoint extends IEnablement {
 	condition: string;
 	hitCondition: string;
 	logMessage: string;
+	verified: boolean;
+	idFromAdapter: number;
 }
 
 export interface IBreakpoint extends IBaseBreakpoint {
@@ -252,15 +255,12 @@ export interface IBreakpoint extends IBaseBreakpoint {
 	endLineNumber?: number;
 	column: number;
 	endColumn?: number;
-	verified: boolean;
-	idFromAdapter: number;
 	message: string;
+	adapterData: any;
 }
 
 export interface IFunctionBreakpoint extends IBaseBreakpoint {
 	name: string;
-	verified: boolean;
-	idFromAdapter: number;
 }
 
 export interface IExceptionBreakpoint extends IEnablement {

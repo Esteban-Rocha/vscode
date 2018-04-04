@@ -15,7 +15,6 @@ import { MAX_FILE_SIZE, MAX_HEAP_SIZE } from 'vs/platform/files/node/files';
 import { isEqualOrParent } from 'vs/base/common/paths';
 import { ResourceMap } from 'vs/base/common/map';
 import * as arrays from 'vs/base/common/arrays';
-import * as baseMime from 'vs/base/common/mime';
 import { TPromise } from 'vs/base/common/winjs.base';
 import * as objects from 'vs/base/common/objects';
 import * as extfs from 'vs/base/node/extfs';
@@ -27,7 +26,6 @@ import { dispose, IDisposable, toDisposable } from 'vs/base/common/lifecycle';
 import { IWorkspaceContextService, WorkbenchState } from 'vs/platform/workspace/common/workspace';
 import * as pfs from 'vs/base/node/pfs';
 import * as encoding from 'vs/base/node/encoding';
-import { detectMimeAndEncodingFromBuffer, IMimeAndEncoding } from 'vs/base/node/mime';
 import * as flow from 'vs/base/node/flow';
 import { FileWatcher as UnixWatcherService } from 'vs/workbench/services/files/node/watcher/unix/watcherService';
 import { FileWatcher as WindowsWatcherService } from 'vs/workbench/services/files/node/watcher/win32/watcherService';
@@ -44,7 +42,8 @@ import { Readable } from 'stream';
 import { Schemas } from 'vs/base/common/network';
 
 export interface IEncodingOverride {
-	resource: uri;
+	parent?: uri;
+	extension?: string;
 	encoding: string;
 }
 
@@ -278,14 +277,14 @@ export class FileService implements IFileService {
 			value: void 0
 		};
 
-		const contentResolverToken = new CancellationTokenSource();
+		const contentResolverTokenSource = new CancellationTokenSource();
 
 		const onStatError = (error: Error) => {
 
 			// error: stop reading the file the stat and content resolve call
 			// usually race, mostly likely the stat call will win and cancel
 			// the content call
-			contentResolverToken.cancel();
+			contentResolverTokenSource.cancel();
 
 			// forward error
 			return TPromise.wrapError(error);
@@ -319,7 +318,7 @@ export class FileService implements IFileService {
 			if (typeof stat.size === 'number') {
 				if (stat.size > Math.max(this.environmentService.args['max-memory'] * 1024 * 1024 || 0, MAX_HEAP_SIZE)) {
 					return onStatError(new FileOperationError(
-						nls.localize('fileTooLargeForHeapError', "File size exceeds window memory limit, please try to run code --max-memory=NEWSIZE"),
+						nls.localize('fileTooLargeForHeapError', "To open a file of this size, you need to restart VS Code and allow it to use more memory"),
 						FileOperationResult.FILE_EXCEED_MEMORY_LIMIT
 					));
 				}
@@ -353,17 +352,21 @@ export class FileService implements IFileService {
 		// etag from the stat before we actually read the file again.
 		if (options && options.etag) {
 			completePromise = statsPromise.then(() => {
-				return this.fillInContents(result, resource, options, contentResolverToken.token); // Waterfall -> only now resolve the contents
+				return this.fillInContents(result, resource, options, contentResolverTokenSource.token); // Waterfall -> only now resolve the contents
 			});
 		}
 
 		// a fresh load without a previous etag which means we can resolve the file stat
 		// and the content at the same time, avoiding the waterfall.
 		else {
-			completePromise = Promise.all([statsPromise, this.fillInContents(result, resource, options, contentResolverToken.token)]);
+			completePromise = Promise.all([statsPromise, this.fillInContents(result, resource, options, contentResolverTokenSource.token)]);
 		}
 
-		return TPromise.wrap(completePromise).then(() => result);
+		return TPromise.wrap(completePromise).then(() => {
+			contentResolverTokenSource.dispose();
+
+			return result;
+		});
 	}
 
 	private fillInContents(content: IStreamContent, resource: uri, options: IResolveContentOptions, token: CancellationToken): Thenable<any> {
@@ -465,7 +468,7 @@ export class FileService implements IFileService {
 
 						if (totalBytesRead > Math.max(this.environmentService.args['max-memory'] * 1024 * 1024 || 0, MAX_HEAP_SIZE)) {
 							finish(new FileOperationError(
-								nls.localize('fileTooLargeForHeapError', "File size exceeds window memory limit, please try to run code --max-memory=NEWSIZE"),
+								nls.localize('fileTooLargeForHeapError', "To open a file of this size, you need to restart VS Code and allow it to use more memory"),
 								FileOperationResult.FILE_EXCEED_MEMORY_LIMIT
 							));
 						}
@@ -488,12 +491,12 @@ export class FileService implements IFileService {
 						} else {
 							// when receiving the first chunk of data we need to create the
 							// decoding stream which is then used to drive the string stream.
-							TPromise.as(detectMimeAndEncodingFromBuffer(
+							TPromise.as(encoding.detectEncodingFromBuffer(
 								{ buffer: chunkBuffer, bytesRead },
 								options && options.autoGuessEncoding || this.configuredAutoGuessEncoding(resource)
-							)).then(value => {
+							)).then(detected => {
 
-								if (options && options.acceptTextOnly && value.mimes.indexOf(baseMime.MIME_BINARY) >= 0) {
+								if (options && options.acceptTextOnly && detected.seemsBinary) {
 									// Return error early if client only accepts text and this is not text
 									finish(new FileOperationError(
 										nls.localize('fileBinaryError', "File seems to be binary and cannot be opened as text"),
@@ -502,7 +505,7 @@ export class FileService implements IFileService {
 									));
 
 								} else {
-									result.encoding = this.getEncoding(resource, this.getPeferredEncoding(resource, options, value));
+									result.encoding = this.getEncoding(resource, this.getPeferredEncoding(resource, options, detected));
 									result.stream = decoder = encoding.decodeStream(result.encoding);
 									resolve(result);
 									handleChunk(bytesRead);
@@ -920,7 +923,7 @@ export class FileService implements IFileService {
 		});
 	}
 
-	private getPeferredEncoding(resource: uri, options: IResolveContentOptions, detected: IMimeAndEncoding): string {
+	private getPeferredEncoding(resource: uri, options: IResolveContentOptions, detected: encoding.IDetectedEncodingResult): string {
 		let preferredEncoding: string;
 		if (options && options.encoding) {
 			if (detected.encoding === encoding.UTF8 && options.encoding === encoding.UTF8) {
@@ -972,9 +975,13 @@ export class FileService implements IFileService {
 			for (let i = 0; i < this.options.encodingOverride.length; i++) {
 				const override = this.options.encodingOverride[i];
 
-				// check if the resource is a child of the resource with override and use
-				// the provided encoding in that case
-				if (isParent(resource.fsPath, override.resource.fsPath, !isLinux /* ignorecase */)) {
+				// check if the resource is child of encoding override path
+				if (override.parent && isParent(resource.fsPath, override.parent.fsPath, !isLinux /* ignorecase */)) {
+					return override.encoding;
+				}
+
+				// check if the resource extension is equal to encoding override
+				if (override.extension && paths.extname(resource.fsPath) === `.${override.extension}`) {
 					return override.encoding;
 				}
 			}

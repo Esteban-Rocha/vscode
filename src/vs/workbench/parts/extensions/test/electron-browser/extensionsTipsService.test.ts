@@ -45,7 +45,8 @@ import product from 'vs/platform/node/product';
 import { ITextModel } from 'vs/editor/common/model';
 import { IModelService } from 'vs/editor/common/services/modelService';
 import { ILifecycleService } from 'vs/platform/lifecycle/common/lifecycle';
-import { INotificationService } from 'vs/platform/notification/common/notification';
+import { INotificationService, Severity, IPromptChoice } from 'vs/platform/notification/common/notification';
+import { URLService } from 'vs/platform/url/common/urlService';
 
 const mockExtensionGallery: IGalleryExtension[] = [
 	aGalleryExtension('MockExtension1', {
@@ -189,8 +190,8 @@ suite('ExtensionsTipsService Test', () => {
 		instantiationService.stub(IExtensionManagementService, 'onUninstallExtension', uninstallEvent.event);
 		instantiationService.stub(IExtensionManagementService, 'onDidUninstallExtension', didUninstallEvent.event);
 		instantiationService.stub(IExtensionEnablementService, new TestExtensionEnablementService(instantiationService));
-		instantiationService.stub(IURLService, { onOpenURL: new Emitter().event });
 		instantiationService.stub(ITelemetryService, NullTelemetryService);
+		instantiationService.stub(IURLService, URLService);
 
 		onModelAddedEvent = new Emitter<ITextModel>();
 
@@ -222,9 +223,9 @@ suite('ExtensionsTipsService Test', () => {
 		prompted = false;
 
 		class TestNotificationService2 extends TestNotificationService {
-			public prompt() {
+			public prompt(severity: Severity, message: string, choices: IPromptChoice[], onCancel?: () => void) {
 				prompted = true;
-				return TPromise.as(3);
+				return null;
 			}
 		}
 
