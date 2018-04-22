@@ -12,7 +12,7 @@ import * as strings from 'vs/base/common/strings';
 import URI from 'vs/base/common/uri';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
-import { EditorOptions } from 'vs/workbench/common/editor';
+import { EditorOptions, EditorViewStateMemento } from 'vs/workbench/common/editor';
 import { BaseEditor } from 'vs/workbench/browser/parts/editor/baseEditor';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { WalkThroughInput } from 'vs/workbench/parts/welcome/walkThrough/node/walkThroughInput';
@@ -55,12 +55,6 @@ interface IWalkThroughEditorViewState {
 	viewState: IViewState;
 }
 
-interface IWalkThroughEditorViewStates {
-	0?: IWalkThroughEditorViewState;
-	1?: IWalkThroughEditorViewState;
-	2?: IWalkThroughEditorViewState;
-}
-
 class WalkThroughCodeEditor extends CodeEditor {
 
 	constructor(
@@ -71,9 +65,10 @@ class WalkThroughCodeEditor extends CodeEditor {
 		@ICodeEditorService codeEditorService: ICodeEditorService,
 		@ICommandService commandService: ICommandService,
 		@IContextKeyService contextKeyService: IContextKeyService,
-		@IThemeService themeService: IThemeService
+		@IThemeService themeService: IThemeService,
+		@INotificationService notificationService: INotificationService,
 	) {
-		super(domElement, options, instantiationService, codeEditorService, commandService, contextKeyService, themeService);
+		super(domElement, options, instantiationService, codeEditorService, commandService, contextKeyService, themeService, notificationService);
 	}
 
 	getTelemetryData() {
@@ -91,6 +86,7 @@ export class WalkThroughPart extends BaseEditor {
 	private scrollbar: DomScrollableElement;
 	private editorFocus: IContextKey<boolean>;
 	private size: Dimension;
+	private editorViewStateMemento: EditorViewStateMemento<IWalkThroughEditorViewState>;
 
 	constructor(
 		@ITelemetryService telemetryService: ITelemetryService,
@@ -99,13 +95,14 @@ export class WalkThroughPart extends BaseEditor {
 		@IInstantiationService private instantiationService: IInstantiationService,
 		@IOpenerService private openerService: IOpenerService,
 		@IKeybindingService private keybindingService: IKeybindingService,
-		@IStorageService private storageService: IStorageService,
+		@IStorageService storageService: IStorageService,
 		@IContextKeyService private contextKeyService: IContextKeyService,
 		@IConfigurationService private configurationService: IConfigurationService,
 		@INotificationService private notificationService: INotificationService
 	) {
 		super(WalkThroughPart.ID, telemetryService, themeService);
 		this.editorFocus = WALK_THROUGH_FOCUS.bindTo(this.contextKeyService);
+		this.editorViewStateMemento = new EditorViewStateMemento<IWalkThroughEditorViewState>(this.getMemento(storageService, Scope.WORKSPACE), WALK_THROUGH_EDITOR_VIEW_STATE_PREFERENCE_KEY);
 	}
 
 	createEditor(container: HTMLElement): void {
@@ -279,7 +276,7 @@ export class WalkThroughPart extends BaseEditor {
 		}
 
 		if (this.input instanceof WalkThroughInput) {
-			this.saveTextEditorViewState(this.input.getResource());
+			this.saveTextEditorViewState(this.input);
 		}
 
 		this.contentDisposables = dispose(this.contentDisposables);
@@ -300,7 +297,7 @@ export class WalkThroughPart extends BaseEditor {
 						input.onReady(this.content.firstElementChild as HTMLElement);
 					}
 					this.scrollbar.scanDomNode();
-					this.loadTextEditorViewState(input.getResource());
+					this.loadTextEditorViewState(input);
 					this.updatedScrollPosition();
 					return;
 				}
@@ -430,7 +427,7 @@ export class WalkThroughPart extends BaseEditor {
 					input.onReady(innerContent);
 				}
 				this.scrollbar.scanDomNode();
-				this.loadTextEditorViewState(input.getResource());
+				this.loadTextEditorViewState(input);
 				this.updatedScrollPosition();
 			});
 	}
@@ -494,59 +491,44 @@ export class WalkThroughPart extends BaseEditor {
 		});
 	}
 
-	private saveTextEditorViewState(resource: URI): void {
-		const memento = this.getMemento(this.storageService, Scope.WORKSPACE);
-		let editorViewStateMemento: { [key: string]: { [position: number]: IWalkThroughEditorViewState } } = memento[WALK_THROUGH_EDITOR_VIEW_STATE_PREFERENCE_KEY];
-		if (!editorViewStateMemento) {
-			editorViewStateMemento = Object.create(null);
-			memento[WALK_THROUGH_EDITOR_VIEW_STATE_PREFERENCE_KEY] = editorViewStateMemento;
-		}
-
+	private saveTextEditorViewState(input: WalkThroughInput): void {
 		const scrollPosition = this.scrollbar.getScrollPosition();
-		const editorViewState: IWalkThroughEditorViewState = {
+
+		this.editorViewStateMemento.saveState(input, this.position, {
 			viewState: {
 				scrollTop: scrollPosition.scrollTop,
 				scrollLeft: scrollPosition.scrollLeft
 			}
-		};
-
-		let fileViewState = editorViewStateMemento[resource.toString()];
-		if (!fileViewState) {
-			fileViewState = Object.create(null);
-			editorViewStateMemento[resource.toString()] = fileViewState;
-		}
-
-		if (typeof this.position === 'number') {
-			fileViewState[this.position] = editorViewState;
-		}
+		});
 	}
 
-	private loadTextEditorViewState(resource: URI) {
-		const memento = this.getMemento(this.storageService, Scope.WORKSPACE);
-		const editorViewStateMemento: { [key: string]: IWalkThroughEditorViewStates } = memento[WALK_THROUGH_EDITOR_VIEW_STATE_PREFERENCE_KEY];
-		if (editorViewStateMemento) {
-			const fileViewState = editorViewStateMemento[resource.toString()];
-			if (fileViewState) {
-				const state = fileViewState[this.position];
-				if (state) {
-					this.scrollbar.setScrollPosition(state.viewState);
-				}
-			}
+	private loadTextEditorViewState(input: WalkThroughInput) {
+		const state = this.editorViewStateMemento.loadState(input, this.position);
+		if (state) {
+			this.scrollbar.setScrollPosition(state.viewState);
 		}
 	}
 
 	public clearInput(): void {
 		if (this.input instanceof WalkThroughInput) {
-			this.saveTextEditorViewState(this.input.getResource());
+			this.saveTextEditorViewState(this.input);
 		}
 		super.clearInput();
 	}
 
 	public shutdown(): void {
 		if (this.input instanceof WalkThroughInput) {
-			this.saveTextEditorViewState(this.input.getResource());
+			this.saveTextEditorViewState(this.input);
 		}
 		super.shutdown();
+	}
+
+	protected saveMemento(): void {
+
+		// ensure to first save our view state memento
+		this.editorViewStateMemento.save();
+
+		super.saveMemento();
 	}
 
 	dispose(): void {

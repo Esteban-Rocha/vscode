@@ -5,7 +5,7 @@
 'use strict';
 
 import { INewScrollPosition } from 'vs/editor/common/editorCommon';
-import { EndOfLinePreference, IModelDecorationOptions } from 'vs/editor/common/model';
+import { EndOfLinePreference, IModelDecorationOptions, IActiveIndentGuideInfo } from 'vs/editor/common/model';
 import { IViewLineTokens } from 'vs/editor/common/core/lineTokens';
 import { Position, IPosition } from 'vs/editor/common/core/position';
 import { Range } from 'vs/editor/common/core/range';
@@ -131,6 +131,8 @@ export interface IViewModel {
 	getTabSize(): number;
 	getLineCount(): number;
 	getLineContent(lineNumber: number): string;
+	getLineLength(lineNumber: number): number;
+	getActiveIndentGuide(lineNumber: number): IActiveIndentGuideInfo;
 	getLinesIndentGuides(startLineNumber: number, endLineNumber: number): number[];
 	getLineMinColumn(lineNumber: number): number;
 	getLineMaxColumn(lineNumber: number): number;
@@ -269,7 +271,8 @@ export class ViewLineRenderingData {
 export const enum InlineDecorationType {
 	Regular = 0,
 	Before = 1,
-	After = 2
+	After = 2,
+	RegularAffectingLetterSpacing = 3
 }
 
 export class InlineDecoration {

@@ -32,7 +32,8 @@ const configurationEntrySchema: IJSONSchema = {
 						type: 'object',
 						properties: {
 							isExecutable: {
-								type: 'boolean'
+								type: 'boolean',
+								deprecationMessage: 'This property is deprecated. Instead use `scope` property and set it to `application` value.'
 							},
 							scope: {
 								type: 'string',
@@ -131,13 +132,16 @@ function validateProperties(configuration: IConfigurationNode, extension: IExten
 		for (let key in properties) {
 			const message = validateProperty(key);
 			const propertyConfiguration = configuration.properties[key];
-			propertyConfiguration.scope = ConfigurationScope.WINDOW;
 			if (propertyConfiguration.scope) {
 				if (propertyConfiguration.scope.toString() === 'application') {
 					propertyConfiguration.scope = ConfigurationScope.APPLICATION;
 				} else if (propertyConfiguration.scope.toString() === 'resource') {
 					propertyConfiguration.scope = ConfigurationScope.RESOURCE;
+				} else {
+					propertyConfiguration.scope = ConfigurationScope.WINDOW;
 				}
+			} else {
+				propertyConfiguration.scope = ConfigurationScope.WINDOW;
 			}
 			propertyConfiguration.notMultiRootAdopted = !(extension.description.isBuiltin || (Array.isArray(extension.description.keywords) && extension.description.keywords.indexOf('multi-root ready') !== -1));
 			if (message) {

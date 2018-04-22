@@ -27,9 +27,9 @@ import {
 import { ExtensionsInput } from 'vs/workbench/parts/extensions/common/extensionsInput';
 import { ViewletRegistry, Extensions as ViewletExtensions, ViewletDescriptor } from 'vs/workbench/browser/viewlet';
 import { ExtensionEditor } from 'vs/workbench/parts/extensions/electron-browser/extensionEditor';
-import { StatusUpdater, ExtensionsViewlet, MaliciousExtensionChecker } from 'vs/workbench/parts/extensions/electron-browser/extensionsViewlet';
+import { StatusUpdater, ExtensionsViewlet, MaliciousExtensionChecker, ExtensionsViewletViewsContribution } from 'vs/workbench/parts/extensions/electron-browser/extensionsViewlet';
 import { IQuickOpenRegistry, Extensions, QuickOpenHandlerDescriptor } from 'vs/workbench/browser/quickopen';
-import { IConfigurationRegistry, Extensions as ConfigurationExtensions } from 'vs/platform/configuration/common/configurationRegistry';
+import { IConfigurationRegistry, Extensions as ConfigurationExtensions, ConfigurationScope } from 'vs/platform/configuration/common/configurationRegistry';
 import * as jsonContributionRegistry from 'vs/platform/jsonschemas/common/jsonContributionRegistry';
 import { ExtensionsConfigurationSchema, ExtensionsConfigurationSchemaId } from 'vs/workbench/parts/extensions/common/extensionsFileTemplate';
 import { CommandsRegistry } from 'vs/platform/commands/common/commands';
@@ -54,6 +54,7 @@ workbenchRegistry.registerWorkbenchContribution(StatusUpdater, LifecyclePhase.Ru
 workbenchRegistry.registerWorkbenchContribution(MaliciousExtensionChecker, LifecyclePhase.Eventually);
 workbenchRegistry.registerWorkbenchContribution(ConfigureRecommendedExtensionsCommandsContributor, LifecyclePhase.Eventually);
 workbenchRegistry.registerWorkbenchContribution(KeymapExtensions, LifecyclePhase.Running);
+workbenchRegistry.registerWorkbenchContribution(ExtensionsViewletViewsContribution, LifecyclePhase.Starting);
 
 Registry.as<IOutputChannelRegistry>(OutputExtensions.OutputChannels)
 	.registerChannel(ExtensionsChannelId, ExtensionsLabel);
@@ -120,7 +121,7 @@ const viewletDescriptor = new ViewletDescriptor(
 	VIEWLET_ID,
 	localize('extensions', "Extensions"),
 	'extensions',
-	100
+	4
 );
 
 Registry.as<ViewletRegistry>(ViewletExtensions.Viewlets)
@@ -204,7 +205,8 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration)
 			'extensions.autoUpdate': {
 				type: 'boolean',
 				description: localize('extensionsAutoUpdate', "Automatically update extensions"),
-				default: true
+				default: true,
+				scope: ConfigurationScope.APPLICATION
 			},
 			'extensions.ignoreRecommendations': {
 				type: 'boolean',

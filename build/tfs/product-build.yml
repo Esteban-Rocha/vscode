@@ -29,6 +29,7 @@ phases:
       $env:VSCODE_MIXIN_PASSWORD="$(VSCODE_MIXIN_PASSWORD)"
       npm run gulp -- mixin
       node build/tfs/common/installDistro.js
+      node build/lib/builtInExtensions.js
 
   - powershell: |
       $env:VSCODE_MIXIN_PASSWORD="$(VSCODE_MIXIN_PASSWORD)"
@@ -39,6 +40,7 @@ phases:
   - powershell: |
       npm run gulp -- "electron-$(VSCODE_ARCH)"
       .\scripts\test.bat --build --tfs
+      # yarn smoketest -- --build "$(agent.builddirectory)\VSCode-win32-$(VSCODE_ARCH)"
     name: test
 
   - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
@@ -222,6 +224,10 @@ phases:
       node build/tfs/common/publish.js $Quality "$global:assetPlatform-archive" archive "VSCode-win32-$(VSCODE_ARCH)-$Version.zip" $Version true $Zip
       node build/tfs/common/publish.js $Quality "$global:assetPlatform" setup "VSCodeSetup-$(VSCODE_ARCH)-$Version.exe" $Version true $Exe
 
+      # publish hockeyapp symbols
+      $hockeyAppId = if ("$(VSCODE_ARCH)" -eq "ia32") { "$(VSCODE_HOCKEYAPP_ID_WIN32)" } else { "$(VSCODE_HOCKEYAPP_ID_WIN64)" }
+      node build/tfs/common/symbols.js "$(VSCODE_MIXIN_PASSWORD)" "$(VSCODE_HOCKEYAPP_TOKEN)" "$(VSCODE_ARCH)" $hockeyAppId
+
 - phase: Linux
   condition: eq(variables['VSCODE_BUILD_LINUX'], 'true')
   queue: linux-x64
@@ -249,6 +255,7 @@ phases:
       npm run monaco-compile-check
       VSCODE_MIXIN_PASSWORD="$(VSCODE_MIXIN_PASSWORD)" npm run gulp -- mixin
       node build/tfs/common/installDistro.js
+      node build/lib/builtInExtensions.js
 
   - script: |
       VSCODE_MIXIN_PASSWORD="$(VSCODE_MIXIN_PASSWORD)" npm run gulp -- vscode-linux-$(VSCODE_ARCH)-min
@@ -257,6 +264,7 @@ phases:
   - script: |
       npm run gulp -- "electron-$(VSCODE_ARCH)"
       DISPLAY=:10 ./scripts/test.sh --build --tfs
+      # yarn smoketest -- --build "$(agent.builddirectory)/VSCode-linux-$(VSCODE_ARCH)"
     name: test
 
   - script: |
@@ -268,6 +276,9 @@ phases:
       AZURE_STORAGE_ACCESS_KEY_2="$(AZURE_STORAGE_ACCESS_KEY_2)" \
       MOONCAKE_STORAGE_ACCESS_KEY="$(MOONCAKE_STORAGE_ACCESS_KEY)" \
       ./build/tfs/linux/release2.sh "$(VSCODE_ARCH)" "$(LINUX_REPO_PASSWORD)"
+
+      # publish hockeyapp symbols
+      node build/tfs/common/symbols.js "$(VSCODE_MIXIN_PASSWORD)" "$(VSCODE_HOCKEYAPP_TOKEN)" "$(VSCODE_ARCH)" "$(VSCODE_HOCKEYAPP_ID_LINUX64)"
 
 - phase: Linux32
   condition: eq(variables['VSCODE_BUILD_LINUX'], 'true')
@@ -296,6 +307,7 @@ phases:
       npm run monaco-compile-check
       VSCODE_MIXIN_PASSWORD="$(VSCODE_MIXIN_PASSWORD)" npm run gulp -- mixin
       node build/tfs/common/installDistro.js
+      node build/lib/builtInExtensions.js
 
   - script: |
       VSCODE_MIXIN_PASSWORD="$(VSCODE_MIXIN_PASSWORD)" npm run gulp -- vscode-linux-$(VSCODE_ARCH)-min
@@ -304,6 +316,7 @@ phases:
   - script: |
       npm run gulp -- "electron-$(VSCODE_ARCH)"
       DISPLAY=:10 ./scripts/test.sh --build --tfs
+      # yarn smoketest -- --build "$(agent.builddirectory)/VSCode-linux-$(VSCODE_ARCH)"
     name: test
 
   - script: |
@@ -315,6 +328,9 @@ phases:
       AZURE_STORAGE_ACCESS_KEY_2="$(AZURE_STORAGE_ACCESS_KEY_2)" \
       MOONCAKE_STORAGE_ACCESS_KEY="$(MOONCAKE_STORAGE_ACCESS_KEY)" \
       ./build/tfs/linux/release2.sh "$(VSCODE_ARCH)" "$(LINUX_REPO_PASSWORD)"
+
+      # publish hockeyapp symbols
+      node build/tfs/common/symbols.js "$(VSCODE_MIXIN_PASSWORD)" "$(VSCODE_HOCKEYAPP_TOKEN)" "$(VSCODE_ARCH)" "$(VSCODE_HOCKEYAPP_ID_LINUX32)"
 
 - phase: macOS
   condition: eq(variables['VSCODE_BUILD_MACOS'], 'true')
@@ -335,6 +351,7 @@ phases:
       npm run monaco-compile-check
       VSCODE_MIXIN_PASSWORD="$(VSCODE_MIXIN_PASSWORD)" npm run gulp -- mixin
       node build/tfs/common/installDistro.js
+      node build/lib/builtInExtensions.js
 
   - script: |
       VSCODE_MIXIN_PASSWORD="$(VSCODE_MIXIN_PASSWORD)" \
@@ -344,6 +361,8 @@ phases:
 
   - script: |
       ./scripts/test.sh --build --tfs
+      APP_NAME="`ls $(agent.builddirectory)/VSCode-darwin | head -n 1`"
+      # yarn smoketest -- --build "$(agent.builddirectory)/VSCode-darwin/$APP_NAME"
     name: test
 
   - script: |
@@ -364,6 +383,9 @@ phases:
         $VERSION \
         false \
         ../VSCode-darwin-unsigned.zip
+
+      # publish hockeyapp symbols
+      node build/tfs/common/symbols.js "$(VSCODE_MIXIN_PASSWORD)" "$(VSCODE_HOCKEYAPP_TOKEN)" "$(VSCODE_ARCH)" "$(VSCODE_HOCKEYAPP_ID_MACOS)"
 
       # enqueue the unsigned build
       AZURE_DOCUMENTDB_MASTERKEY="$(AZURE_DOCUMENTDB_MASTERKEY)" \

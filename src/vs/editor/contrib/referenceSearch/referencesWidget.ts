@@ -84,28 +84,25 @@ class DecorationsManager implements IDisposable {
 	private _addDecorations(reference: FileReferences): void {
 		this._callOnModelChange.push(this._editor.getModel().onDidChangeDecorations((event) => this._onDecorationChanged()));
 
-		this._editor.changeDecorations(accessor => {
+		const newDecorations: IModelDeltaDecoration[] = [];
+		const newDecorationsActualIndex: number[] = [];
 
-			const newDecorations: IModelDeltaDecoration[] = [];
-			const newDecorationsActualIndex: number[] = [];
-
-			for (let i = 0, len = reference.children.length; i < len; i++) {
-				let oneReference = reference.children[i];
-				if (this._decorationIgnoreSet.has(oneReference.id)) {
-					continue;
-				}
-				newDecorations.push({
-					range: oneReference.range,
-					options: DecorationsManager.DecorationOptions
-				});
-				newDecorationsActualIndex.push(i);
+		for (let i = 0, len = reference.children.length; i < len; i++) {
+			let oneReference = reference.children[i];
+			if (this._decorationIgnoreSet.has(oneReference.id)) {
+				continue;
 			}
+			newDecorations.push({
+				range: oneReference.range,
+				options: DecorationsManager.DecorationOptions
+			});
+			newDecorationsActualIndex.push(i);
+		}
 
-			const decorations = accessor.deltaDecorations([], newDecorations);
-			for (let i = 0; i < decorations.length; i++) {
-				this._decorations.set(decorations[i], reference.children[newDecorationsActualIndex[i]]);
-			}
-		});
+		const decorations = this._editor.deltaDecorations([], newDecorations);
+		for (let i = 0; i < decorations.length; i++) {
+			this._decorations.set(decorations[i], reference.children[newDecorationsActualIndex[i]]);
+		}
 	}
 
 	private _onDecorationChanged(): void {
@@ -143,21 +140,19 @@ class DecorationsManager implements IDisposable {
 			}
 		});
 
-		this._editor.changeDecorations((accessor) => {
-			for (let i = 0, len = toRemove.length; i < len; i++) {
-				this._decorations.delete(toRemove[i]);
-			}
-			accessor.deltaDecorations(toRemove, []);
-		});
+		for (let i = 0, len = toRemove.length; i < len; i++) {
+			this._decorations.delete(toRemove[i]);
+		}
+		this._editor.deltaDecorations(toRemove, []);
 	}
 
 	public removeDecorations(): void {
-		this._editor.changeDecorations(accessor => {
-			this._decorations.forEach((value, key) => {
-				accessor.removeDecoration(key);
-			});
-			this._decorations.clear();
+		let toRemove: string[] = [];
+		this._decorations.forEach((value, key) => {
+			toRemove.push(key);
 		});
+		this._editor.deltaDecorations(toRemove, []);
+		this._decorations.clear();
 	}
 }
 
@@ -533,6 +528,7 @@ export class ReferenceWidget extends PeekViewWidget {
 
 	constructor(
 		editor: ICodeEditor,
+		private _defaultTreeKeyboardSupport: boolean,
 		public layoutData: LayoutData,
 		private _textModelResolverService: ITextModelService,
 		private _contextService: IWorkspaceContextService,
@@ -635,7 +631,7 @@ export class ReferenceWidget extends PeekViewWidget {
 
 		// tree
 		container.div({ 'class': 'ref-tree inline' }, (div: Builder) => {
-			var controller = this._instantiationService.createInstance(Controller, { clickBehavior: ClickBehavior.ON_MOUSE_UP /* our controller already deals with this */ });
+			var controller = this._instantiationService.createInstance(Controller, { keyboardSupport: this._defaultTreeKeyboardSupport, clickBehavior: ClickBehavior.ON_MOUSE_UP /* our controller already deals with this */ });
 			this._callOnDispose.push(controller);
 
 			var config = <tree.ITreeConfiguration>{
@@ -840,6 +836,7 @@ export const peekViewEditorGutterBackground = registerColor('peekViewEditorGutte
 
 export const peekViewResultsMatchHighlight = registerColor('peekViewResult.matchHighlightBackground', { dark: '#ea5c004d', light: '#ea5c004d', hc: null }, nls.localize('peekViewResultsMatchHighlight', 'Match highlight color in the peek view result list.'));
 export const peekViewEditorMatchHighlight = registerColor('peekViewEditor.matchHighlightBackground', { dark: '#ff8f0099', light: '#f5d802de', hc: null }, nls.localize('peekViewEditorMatchHighlight', 'Match highlight color in the peek view editor.'));
+export const peekViewEditorMatchHighlightBorder = registerColor('peekViewEditor.matchHighlightBorder', { dark: null, light: null, hc: activeContrastBorder }, nls.localize('peekViewEditorMatchHighlightBorder', 'Match highlight border in the peek view editor.'));
 
 
 registerThemingParticipant((theme, collector) => {
@@ -851,10 +848,13 @@ registerThemingParticipant((theme, collector) => {
 	if (referenceHighlightColor) {
 		collector.addRule(`.monaco-editor .reference-zone-widget .preview .reference-decoration { background-color: ${referenceHighlightColor}; }`);
 	}
+	let referenceHighlightBorder = theme.getColor(peekViewEditorMatchHighlightBorder);
+	if (referenceHighlightBorder) {
+		collector.addRule(`.monaco-editor .reference-zone-widget .preview .reference-decoration { border: 2px solid ${referenceHighlightBorder}; box-sizing: border-box; }`);
+	}
 	let hcOutline = theme.getColor(activeContrastBorder);
 	if (hcOutline) {
 		collector.addRule(`.monaco-editor .reference-zone-widget .ref-tree .referenceMatch { border: 1px dotted ${hcOutline}; box-sizing: border-box; }`);
-		collector.addRule(`.monaco-editor .reference-zone-widget .preview .reference-decoration { border: 2px solid ${hcOutline}; box-sizing: border-box; }`);
 	}
 	let resultsBackground = theme.getColor(peekViewResultsBackground);
 	if (resultsBackground) {

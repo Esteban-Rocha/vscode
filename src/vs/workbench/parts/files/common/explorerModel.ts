@@ -277,7 +277,7 @@ export class ExplorerItem {
 	}
 
 	private getPlatformAwareName(name: string): string {
-		return isLinux ? name : name.toLowerCase();
+		return (isLinux || !name) ? name : name.toLowerCase();
 	}
 
 	/**
@@ -378,13 +378,14 @@ export class ExplorerItem {
 /* A helper that can be used to show a placeholder when creating a new stat */
 export class NewStatPlaceholder extends ExplorerItem {
 
+	public static NAME = '';
 	private static ID = 0;
 
 	private id: number;
 	private directoryPlaceholder: boolean;
 
 	constructor(isDirectory: boolean, root: ExplorerItem) {
-		super(URI.file(''), root, false, false, '');
+		super(URI.file(''), root, false, false, NewStatPlaceholder.NAME);
 
 		this.id = NewStatPlaceholder.ID++;
 		this.isDirectoryResolved = isDirectory;

@@ -20,6 +20,7 @@ import { Range, IRange } from 'vs/editor/common/core/range';
 import { RawContextKey, ContextKeyExpr } from 'vs/platform/contextkey/common/contextkey';
 import { IWorkspaceFolder } from 'vs/platform/workspace/common/workspace';
 import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
+import { IDisposable } from 'vs/base/common/lifecycle';
 
 export const VIEWLET_ID = 'workbench.view.debug';
 export const VARIABLES_VIEW_ID = 'workbench.debug.variablesView';
@@ -122,6 +123,7 @@ export interface ISession {
 	stepOut(args: DebugProtocol.StepOutArguments): TPromise<DebugProtocol.StepOutResponse>;
 	continue(args: DebugProtocol.ContinueArguments): TPromise<DebugProtocol.ContinueResponse>;
 	pause(args: DebugProtocol.PauseArguments): TPromise<DebugProtocol.PauseResponse>;
+	terminateThreads(args: DebugProtocol.TerminateThreadsArguments): TPromise<DebugProtocol.TerminateThreadsResponse>;
 	stepBack(args: DebugProtocol.StepBackArguments): TPromise<DebugProtocol.StepBackResponse>;
 	reverseContinue(args: DebugProtocol.ReverseContinueArguments): TPromise<DebugProtocol.ReverseContinueResponse>;
 
@@ -198,6 +200,7 @@ export interface IThread extends ITreeElement {
 	stepBack(): TPromise<any>;
 	continue(): TPromise<any>;
 	pause(): TPromise<any>;
+	terminate(): TPromise<any>;
 	reverseContinue(): TPromise<any>;
 }
 
@@ -305,13 +308,13 @@ export interface IViewModel extends ITreeElement {
 }
 
 export interface IModel extends ITreeElement {
-	getProcesses(): IProcess[];
-	getBreakpoints(): IBreakpoint[];
+	getProcesses(): ReadonlyArray<IProcess>;
+	getBreakpoints(): ReadonlyArray<IBreakpoint>;
 	areBreakpointsActivated(): boolean;
-	getFunctionBreakpoints(): IFunctionBreakpoint[];
-	getExceptionBreakpoints(): IExceptionBreakpoint[];
-	getWatchExpressions(): IExpression[];
-	getReplElements(): IReplElement[];
+	getFunctionBreakpoints(): ReadonlyArray<IFunctionBreakpoint>;
+	getExceptionBreakpoints(): ReadonlyArray<IExceptionBreakpoint>;
+	getWatchExpressions(): ReadonlyArray<IExpression>;
+	getReplElements(): ReadonlyArray<IReplElement>;
 
 	onDidChangeBreakpoints: Event<IBreakpointsChangeEvent>;
 	onDidChangeCallStack: Event<void>;
@@ -347,6 +350,7 @@ export interface IDebugConfiguration {
 	hideActionBar: boolean;
 	showInStatusBar: 'never' | 'always' | 'onFirstSessionStart';
 	internalConsoleOptions: 'neverOpen' | 'openOnSessionStart' | 'openOnFirstSessionStart';
+	extensionHostDebugAdapter: boolean;
 }
 
 export interface IGlobalConfig {
@@ -356,23 +360,29 @@ export interface IGlobalConfig {
 }
 
 export interface IEnvConfig {
-	name?: string;
-	type: string;
-	request: string;
 	internalConsoleOptions?: 'neverOpen' | 'openOnSessionStart' | 'openOnFirstSessionStart';
 	preLaunchTask?: string;
 	postDebugTask?: string;
-	__restart?: any;
-	__sessionId?: string;
 	debugServer?: number;
 	noDebug?: boolean;
-	port?: number;
 }
 
 export interface IConfig extends IEnvConfig {
+
+	// fundamental attributes
+	type: string;
+	request: string;
+	name?: string;
+
+	// platform specifics
 	windows?: IEnvConfig;
 	osx?: IEnvConfig;
 	linux?: IEnvConfig;
+
+	// internals
+	__sessionId?: string;
+	__restart?: any;
+	port?: number; // TODO
 }
 
 export interface ICompound {
@@ -380,34 +390,58 @@ export interface ICompound {
 	configurations: (string | { name: string, folder: string })[];
 }
 
+export interface IDebugAdapter extends IDisposable {
+	readonly onError: Event<Error>;
+	readonly onExit: Event<number>;
+	onRequest(callback: (request: DebugProtocol.Request) => void);
+	onEvent(callback: (event: DebugProtocol.Event) => void);
+	startSession(): TPromise<void>;
+	sendMessage(message: DebugProtocol.ProtocolMessage): void;
+	sendResponse(response: DebugProtocol.Response): void;
+	sendRequest(command: string, args: any, clb: (result: DebugProtocol.Response) => void): void;
+	stopSession(): TPromise<void>;
+}
+
+export interface IDebugAdapterProvider extends ITerminalLauncher {
+	createDebugAdapter(debugType: string, adapterInfo: IAdapterExecutable | null): IDebugAdapter;
+	substituteVariables(folder: IWorkspaceFolder, config: IConfig): TPromise<IConfig>;
+}
+
 export interface IAdapterExecutable {
 	command?: string;
 	args?: string[];
 }
 
-export interface IRawEnvAdapter {
-	type?: string;
-	label?: string;
+export interface IPlatformSpecificAdapterContribution {
 	program?: string;
 	args?: string[];
 	runtime?: string;
 	runtimeArgs?: string[];
 }
 
-export interface IRawAdapter extends IRawEnvAdapter {
+export interface IDebuggerContribution extends IPlatformSpecificAdapterContribution {
+	type?: string;
+	label?: string;
+	// debug adapter executable
 	adapterExecutableCommand?: string;
-	enableBreakpointsFor?: { languageIds: string[] };
-	configurationAttributes?: any;
-	configurationSnippets?: IJSONSchemaSnippet[];
-	initialConfigurations?: any[];
-	languages?: string[];
-	variables?: { [key: string]: string };
+	win?: IPlatformSpecificAdapterContribution;
+	winx86?: IPlatformSpecificAdapterContribution;
+	windows?: IPlatformSpecificAdapterContribution;
+	osx?: IPlatformSpecificAdapterContribution;
+	linux?: IPlatformSpecificAdapterContribution;
+
+	// internal
 	aiKey?: string;
-	win?: IRawEnvAdapter;
-	winx86?: IRawEnvAdapter;
-	windows?: IRawEnvAdapter;
-	osx?: IRawEnvAdapter;
-	linux?: IRawEnvAdapter;
+
+	// supported languages
+	languages?: string[];
+	enableBreakpointsFor?: { languageIds: string[] };
+
+	// debug configuration support
+	configurationAttributes?: any;
+	initialConfigurations?: any[];
+	configurationSnippets?: IJSONSchemaSnippet[];
+	variables?: { [key: string]: string };
 }
 
 export interface IDebugConfigurationProvider {
@@ -416,6 +450,25 @@ export interface IDebugConfigurationProvider {
 	resolveDebugConfiguration?(folderUri: uri | undefined, debugConfiguration: IConfig): TPromise<IConfig>;
 	provideDebugConfigurations?(folderUri: uri | undefined): TPromise<IConfig[]>;
 	debugAdapterExecutable(folderUri: uri | undefined): TPromise<IAdapterExecutable>;
+}
+
+export interface ITerminalLauncher {
+	runInTerminal(args: DebugProtocol.RunInTerminalRequestArguments, config: ITerminalSettings): TPromise<void>;
+}
+
+export interface ITerminalSettings {
+	external: {
+		windowsExec: string,
+		osxExec: string,
+		linuxExec: string
+	};
+	integrated: {
+		shell: {
+			osx: string,
+			windows: string,
+			linux: string
+		}
+	};
 }
 
 export interface IConfigurationManager {
@@ -448,6 +501,11 @@ export interface IConfigurationManager {
 
 	resolveConfigurationByProviders(folderUri: uri | undefined, type: string | undefined, debugConfiguration: any): TPromise<any>;
 	debugAdapterExecutable(folderUri: uri | undefined, type: string): TPromise<IAdapterExecutable | undefined>;
+
+	registerDebugAdapterProvider(debugTypes: string[], debugAdapterLauncher: IDebugAdapterProvider): IDisposable;
+	createDebugAdapter(debugType: string, adapterExecutable: IAdapterExecutable | null): IDebugAdapter | undefined;
+	substituteVariables(debugType: string, folder: IWorkspaceFolder, config: IConfig): TPromise<IConfig>;
+	runInTerminal(debugType: string, args: DebugProtocol.RunInTerminalRequestArguments, config: ITerminalSettings): TPromise<void>;
 }
 
 export interface ILaunch {
@@ -489,12 +547,6 @@ export interface ILaunch {
 	 * Ignores configurations which are invalid.
 	 */
 	getConfigurationNames(includeCompounds?: boolean): string[];
-
-	/**
-	 * Returns the resolved configuration.
-	 * Replaces os specific values, system variables, interactive variables.
-	 */
-	resolveConfiguration(config: IConfig): TPromise<IConfig>;
 
 	/**
 	 * Opens the launch.json file. Creates if it does not exist.

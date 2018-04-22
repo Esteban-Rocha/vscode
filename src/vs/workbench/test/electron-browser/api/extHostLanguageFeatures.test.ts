@@ -30,7 +30,7 @@ import { getDefinitionsAtPosition, getImplementationsAtPosition, getTypeDefiniti
 import { getHover } from 'vs/editor/contrib/hover/getHover';
 import { getOccurrencesAtPosition } from 'vs/editor/contrib/wordHighlighter/wordHighlighter';
 import { provideReferences } from 'vs/editor/contrib/referenceSearch/referenceSearch';
-import { getCodeActions } from 'vs/editor/contrib/quickFix/quickFix';
+import { getCodeActions } from 'vs/editor/contrib/codeAction/codeAction';
 import { getWorkspaceSymbols } from 'vs/workbench/parts/search/common/search';
 import { rename } from 'vs/editor/contrib/rename/rename';
 import { provideSignatureHelp } from 'vs/editor/contrib/parameterHints/provideSignatureHelp';
@@ -111,7 +111,7 @@ suite('ExtHostLanguageFeatures', function () {
 		const diagnostics = new ExtHostDiagnostics(rpcProtocol);
 		rpcProtocol.set(ExtHostContext.ExtHostDiagnostics, diagnostics);
 
-		extHost = new ExtHostLanguageFeatures(rpcProtocol, extHostDocuments, commands, heapService, diagnostics);
+		extHost = new ExtHostLanguageFeatures(rpcProtocol, null, extHostDocuments, commands, heapService, diagnostics);
 		rpcProtocol.set(ExtHostContext.ExtHostLanguageFeatures, extHost);
 
 		mainThread = rpcProtocol.set(MainContext.MainThreadLanguageFeatures, inst.createInstance(MainThreadLanguageFeatures, rpcProtocol));
@@ -1034,6 +1034,13 @@ suite('ExtHostLanguageFeatures', function () {
 	});
 
 	test('Format Doc, order', function () {
+
+		disposables.push(extHost.registerDocumentFormattingEditProvider(defaultSelector, <vscode.DocumentFormattingEditProvider>{
+			provideDocumentFormattingEdits(): any {
+				return undefined;
+			}
+		}));
+
 		disposables.push(extHost.registerDocumentFormattingEditProvider(defaultSelector, <vscode.DocumentFormattingEditProvider>{
 			provideDocumentFormattingEdits(): any {
 				return [new types.TextEdit(new types.Range(0, 0, 0, 0), 'testing')];
@@ -1079,6 +1086,11 @@ suite('ExtHostLanguageFeatures', function () {
 				return [new types.TextEdit(new types.Range(0, 0, 0, 0), 'range')];
 			}
 		}));
+		disposables.push(extHost.registerDocumentRangeFormattingEditProvider(defaultSelector, <vscode.DocumentRangeFormattingEditProvider>{
+			provideDocumentRangeFormattingEdits(): any {
+				return [new types.TextEdit(new types.Range(2, 3, 4, 5), 'range2')];
+			}
+		}));
 		disposables.push(extHost.registerDocumentFormattingEditProvider(defaultSelector, <vscode.DocumentFormattingEditProvider>{
 			provideDocumentFormattingEdits(): any {
 				return [new types.TextEdit(new types.Range(0, 0, 1, 1), 'doc')];
@@ -1088,7 +1100,11 @@ suite('ExtHostLanguageFeatures', function () {
 			return getDocumentRangeFormattingEdits(model, new EditorRange(1, 1, 1, 1), { insertSpaces: true, tabSize: 4 }).then(value => {
 				assert.equal(value.length, 1);
 				let [first] = value;
-				assert.equal(first.text, 'range');
+				assert.equal(first.text, 'range2');
+				assert.equal(first.range.startLineNumber, 3);
+				assert.equal(first.range.startColumn, 4);
+				assert.equal(first.range.endLineNumber, 5);
+				assert.equal(first.range.endColumn, 6);
 			});
 		});
 	});
