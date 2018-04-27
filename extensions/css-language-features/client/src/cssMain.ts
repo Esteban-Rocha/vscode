@@ -27,13 +27,20 @@ export function activate(context: ExtensionContext) {
 		debug: { module: serverModule, transport: TransportKind.ipc, options: debugOptions }
 	};
 
-	let documentSelector = ['css', 'scss', 'less'];
+	let documentSelector = [
+		{ language: 'css', scheme: 'file' },
+		{ language: 'css', scheme: 'untitled' },
+		{ language: 'scss', scheme: 'file' },
+		{ language: 'scss', scheme: 'untitled' },
+		{ language: 'less', scheme: 'file' },
+		{ language: 'less', scheme: 'untitled' },
+	];
 
 	// Options to control the language client
 	let clientOptions: LanguageClientOptions = {
 		documentSelector,
 		synchronize: {
-			configurationSection: ['css', 'scss', 'less', 'emmet']
+			configurationSection: ['css', 'scss', 'less']
 		},
 		initializationOptions: {
 		}
