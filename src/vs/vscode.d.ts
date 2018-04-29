@@ -88,9 +88,13 @@ declare module 'vscode' {
 	export interface TextDocument {
 
 		/**
-		 * The associated URI for this document. Most documents have the __file__-scheme, indicating that they
-		 * represent files on disk. However, some documents may have other schemes indicating that they are not
-		 * available on disk.
+		 * The associated uri for this document.
+		 *
+		 * *Note* that most documents use the `file`-scheme, which means they are files on disk. However, **not** all documents are
+		 * saved on disk and therefore the `scheme` must be checked before trying to access the underlying file or siblings on disk.
+		 *
+		 * @see [FileSystemProvider](#FileSystemProvider)
+		 * @see [TextDocumentContentProvider](#TextDocumentContentProvider)
 		 */
 		readonly uri: Uri;
 
@@ -3447,17 +3451,6 @@ declare module 'vscode' {
 		public constructor(value: string);
 	}
 
-
-	/**
-	 * Metadata about the kind of folding ranges that a [FoldingRangeProvider](#FoldingRangeProvider) providers uses.
-	 */
-	export interface FoldingRangeProviderMetadata {
-		/**
-		 * [FoldingRangeKind](#FoldingRangeKind) that this provider may return.
-		 */
-		readonly providedFoldingRangeKinds?: ReadonlyArray<FoldingRangeKind>;
-	}
-
 	/**
 	 * Folding context (for future use)
 	 */
@@ -4963,7 +4956,8 @@ declare module 'vscode' {
 	 * paths, e.g. `foo:/my/path` is a child of `foo:/my/` and a parent of `foo:/my/path/deeper`.
 	 * * *Note 2:* There is an activation event `onFileSystem:<scheme>` that fires when a file
 	 * or folder is being accessed.
-	 *
+	 * * *Note 3:* The word 'file' is often used to denote all [kinds](#FileType) of files, e.g.
+	 * folders, symbolic links, and regular files.
 	 */
 	export interface FileSystemProvider {
 
@@ -4976,23 +4970,28 @@ declare module 'vscode' {
 
 		/**
 		 * Subscribe to events in the file or folder denoted by `uri`.
+		 *
+		 * The editor will call this function for files and folders. In the latter case, the
+		 * options differ from defaults, e.g. what files/folders to exclude from watching
+		 * and if subfolders, sub-subfolder, etc. should be watched (`recursive`).
+		 *
 		 * @param uri The uri of the file to be watched.
 		 * @param options Configures the watch.
-		 * @returns A disposable that tells the provider to stop watching this `uri`.
+		 * @returns A disposable that tells the provider to stop watching the `uri`.
 		 */
 		watch(uri: Uri, options: { recursive: boolean; excludes: string[] }): Disposable;
 
 		/**
 		 * Retrieve metadata about a file.
 		 *
-		 * @param uri The uri of the file to retrieve meta data about.
+		 * @param uri The uri of the file to retrieve metadata about.
 		 * @return The file metadata about the file.
 		 * @throws [`FileNotFound`](#FileSystemError.FileNotFound) when `uri` doesn't exist.
 		 */
 		stat(uri: Uri): FileStat | Thenable<FileStat>;
 
 		/**
-		 * Retrieve the meta data of all entries of a [directory](#FileType.Directory)
+		 * Retrieve all entries of a [directory](#FileType.Directory).
 		 *
 		 * @param uri The uri of the folder.
 		 * @return An array of name/type-tuples or a thenable that resolves to such.
@@ -5001,10 +5000,10 @@ declare module 'vscode' {
 		readDirectory(uri: Uri): [string, FileType][] | Thenable<[string, FileType][]>;
 
 		/**
-		 * Create a new directory. *Note* that new files are created via `write`-calls.
+		 * Create a new directory (Note, that new files are created via `write`-calls).
 		 *
 		 * @param uri The uri of the new folder.
-		 * @throws [`FileNotFound`](#FileSystemError.FileNotFound) when the parent of `uri` doesn't exist.
+		 * @throws [`FileNotFound`](#FileSystemError.FileNotFound) when the parent of `uri` doesn't exist, e.g. no mkdirp-logic required.
 		 * @throws [`FileExists`](#FileSystemError.FileExists) when `uri` already exists.
 		 * @throws [`NoPermissions`](#FileSystemError.NoPermissions) when permissions aren't sufficient.
 		 */
@@ -5024,10 +5023,10 @@ declare module 'vscode' {
 		 *
 		 * @param uri The uri of the file.
 		 * @param content The new content of the file.
-		 * @param options Defines is missing files should or must be created.
+		 * @param options Defines if missing files should or must be created.
 		 * @throws [`FileNotFound`](#FileSystemError.FileNotFound) when `uri` doesn't exist and `create` is not set.
-		 * @throws [`FileNotFound`](#FileSystemError.FileNotFound) when the parent of `uri` doesn't exist and `create` is set.
-		 * @throws [`FileExists`](#FileSystemError.FileExists) when `uri` already exists and `overwrite` is set.
+		 * @throws [`FileNotFound`](#FileSystemError.FileNotFound) when the parent of `uri` doesn't exist and `create` is set, e.g. no mkdirp-logic required.
+		 * @throws [`FileExists`](#FileSystemError.FileExists) when `uri` already exists, `create` is set but `overwrite` is not set.
 		 * @throws [`NoPermissions`](#FileSystemError.NoPermissions) when permissions aren't sufficient.
 		 */
 		writeFile(uri: Uri, content: Uint8Array, options: { create: boolean, overwrite: boolean }): void | Thenable<void>;
@@ -5045,11 +5044,11 @@ declare module 'vscode' {
 		/**
 		 * Rename a file or folder.
 		 *
-		 * @param oldUri The existing file or folder.
-		 * @param newUri The target location.
+		 * @param oldUri The existing file.
+		 * @param newUri The new location.
 		 * @param options Defines if existing files should be overwriten.
 		 * @throws [`FileNotFound`](#FileSystemError.FileNotFound) when `oldUri` doesn't exist.
-		 * @throws [`FileNotFound`](#FileSystemError.FileNotFound) when parent of `newUri` doesn't exist
+		 * @throws [`FileNotFound`](#FileSystemError.FileNotFound) when parent of `newUri` doesn't exist, e.g. no mkdirp-logic required.
 		 * @throws [`FileExists`](#FileSystemError.FileExists) when `newUri` exists and when the `overwrite` option is not `true`.
 		 * @throws [`NoPermissions`](#FileSystemError.NoPermissions) when permissions aren't sufficient.
 		 */
@@ -5059,11 +5058,11 @@ declare module 'vscode' {
 		 * Copy files or folders. Implementing this function is optional but it will speedup
 		 * the copy operation.
 		 *
-		 * @param source The existing file or folder.
+		 * @param source The existing file.
 		 * @param destination The destination location.
 		 * @param options Defines if existing files should be overwriten.
-		 * @throws [`FileNotFound`](#FileSystemError.FileNotFound) when `source` doesn't exist
-		 * @throws [`FileNotFound`](#FileSystemError.FileNotFound) when parent of `destination` doesn't exist
+		 * @throws [`FileNotFound`](#FileSystemError.FileNotFound) when `source` doesn't exist.
+		 * @throws [`FileNotFound`](#FileSystemError.FileNotFound) when parent of `destination` doesn't exist, e.g. no mkdirp-logic required.
 		 * @throws [`FileExists`](#FileSystemError.FileExists) when `destination` exists and when the `overwrite` option is not `true`.
 		 * @throws [`NoPermissions`](#FileSystemError.NoPermissions) when permissions aren't sufficient.
 		 */
@@ -5218,8 +5217,9 @@ declare module 'vscode' {
 		 * method moves it to a new column.
 		 *
 		 * @param viewColumn View column to show the panel in. Shows in the current `viewColumn` if undefined.
+		 * @param preserveFocus When `true`, the webview will not take focus.
 		 */
-		reveal(viewColumn?: ViewColumn): void;
+		reveal(viewColumn?: ViewColumn, preserveFocus?: boolean): void;
 
 		/**
 		 * Dispose of the webview panel.
@@ -5728,12 +5728,12 @@ declare module 'vscode' {
 		 *
 		 * @param viewType Identifies the type of the webview panel.
 		 * @param title Title of the panel.
-		 * @param position Editor column to show the new panel in.
+		 * @param showOptions Where to show the webview in the editor. If preserveFocus is set, the new webview will not take focus.
 		 * @param options Settings for the new panel.
 		 *
 		 * @return New webview panel.
 		 */
-		export function createWebviewPanel(viewType: string, title: string, position: ViewColumn, options: WebviewPanelOptions & WebviewOptions): WebviewPanel;
+		export function createWebviewPanel(viewType: string, title: string, showOptions: ViewColumn | { viewColumn: ViewColumn, preserveFocus?: boolean }, options?: WebviewPanelOptions & WebviewOptions): WebviewPanel;
 
 		/**
 		 * Set a message to the status bar. This is a short hand for the more powerful
@@ -6917,7 +6917,7 @@ declare module 'vscode' {
 		 * @param metadata Metadata about the kind of code actions the provider providers.
 		 * @return A [disposable](#Disposable) that unregisters this provider when being disposed.
 		 */
-		export function registerFoldingRangeProvider(selector: DocumentSelector, provider: FoldingRangeProvider, metadata?: FoldingRangeProviderMetadata): Disposable;
+		export function registerFoldingRangeProvider(selector: DocumentSelector, provider: FoldingRangeProvider): Disposable;
 
 		/**
 		 * Set a [language configuration](#LanguageConfiguration) for a language.
