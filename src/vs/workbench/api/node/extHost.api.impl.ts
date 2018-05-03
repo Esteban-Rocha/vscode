@@ -7,7 +7,7 @@
 import { Emitter } from 'vs/base/common/event';
 import { TernarySearchTree } from 'vs/base/common/map';
 import { score } from 'vs/editor/common/modes/languageSelector';
-import * as Platform from 'vs/base/common/platform';
+import * as platform from 'vs/base/common/platform';
 import * as errors from 'vs/base/common/errors';
 import product from 'vs/platform/node/product';
 import pkg from 'vs/platform/node/package';
@@ -125,7 +125,7 @@ export function createApiFactory(
 	const extHostProgress = rpcProtocol.set(ExtHostContext.ExtHostProgress, new ExtHostProgress(rpcProtocol.getProxy(MainContext.MainThreadProgress)));
 
 	// Check that no named customers are missing
-	const expected: ProxyIdentifier<any>[] = Object.keys(ExtHostContext).map((key) => ExtHostContext[key]);
+	const expected: ProxyIdentifier<any>[] = Object.keys(ExtHostContext).map((key) => (<any>ExtHostContext)[key]);
 	rpcProtocol.assertRegistered(expected);
 
 	// Other instances
@@ -147,18 +147,23 @@ export function createApiFactory(
 		// we cannot say if the extension is doing it right or wrong...
 		let checkSelector = (function () {
 			let done = initData.environment.extensionDevelopmentPath !== extension.extensionFolderPath;
-			function inform(selector: vscode.DocumentSelector) {
-				console.info(`Extension '${extension.id}' uses a document selector without scheme. Learn more about this: https://go.microsoft.com/fwlink/?linkid=872305`);
-				done = true;
+			function informOnce(selector: vscode.DocumentSelector) {
+				if (!done) {
+					console.info(`Extension '${extension.id}' uses a document selector without scheme. Learn more about this: https://go.microsoft.com/fwlink/?linkid=872305`);
+					done = true;
+				}
 			}
 			return function perform(selector: vscode.DocumentSelector): vscode.DocumentSelector {
-				if (!done) {
-					if (Array.isArray(selector)) {
-						selector.forEach(perform);
-					} else if (typeof selector === 'string') {
-						inform(selector);
-					} else if (typeof selector.scheme === 'undefined') {
-						inform(selector);
+				if (Array.isArray(selector)) {
+					selector.forEach(perform);
+				} else if (typeof selector === 'string') {
+					informOnce(selector);
+				} else {
+					if (typeof selector.scheme === 'undefined') {
+						informOnce(selector);
+					}
+					if (!extension.enableProposedApi && typeof selector.exclusive === 'boolean') {
+						throwProposedApiError(extension);
 					}
 				}
 				return selector;
@@ -215,7 +220,7 @@ export function createApiFactory(
 		const env: typeof vscode.env = Object.freeze({
 			get machineId() { return initData.telemetryInfo.machineId; },
 			get sessionId() { return initData.telemetryInfo.sessionId; },
-			get language() { return Platform.language; },
+			get language() { return platform.language; },
 			get appName() { return product.nameLong; },
 			get appRoot() { return initData.environment.appRoot; },
 			get logLevel() { return extHostLogService.getLevel(); }
@@ -243,7 +248,7 @@ export function createApiFactory(
 			get onDidChangeDiagnostics() {
 				return extHostDiagnostics.onDidChangeDiagnostics;
 			},
-			getDiagnostics: (resource?) => {
+			getDiagnostics: (resource?: vscode.Uri) => {
 				return <any>extHostDiagnostics.getDiagnostics(resource);
 			},
 			getLanguages(): TPromise<string[]> {
@@ -749,7 +754,7 @@ function defineAPI(factory: IExtensionApiFactory, extensionPaths: TernarySearchT
 
 	const node_module = <any>require.__$__nodeRequire('module');
 	const original = node_module._load;
-	node_module._load = function load(request, parent, isMain) {
+	node_module._load = function load(request: string, parent: any, isMain: any) {
 		if (request !== 'vscode') {
 			return original.apply(this, arguments);
 		}
