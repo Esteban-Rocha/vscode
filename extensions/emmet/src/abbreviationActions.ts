@@ -61,12 +61,24 @@ function doWrapping(individualLines: boolean, args: any) {
 		return;
 	}
 
+	const selections = editor.selections.sort((a: vscode.Selection, b: vscode.Selection) => { return a.start.compareTo(b.start); });
+	let disableLivePreview = false;
+	for (let i = 1; i < selections.length; i++) {
+		if (selections[i].start.line === selections[i - 1].start.line
+			|| selections[i].end.line === selections[i - 1].start.line
+			|| selections[i].start.line === selections[i - 1].end.line
+			|| selections[i].end.line === selections[i - 1].end.line) {
+			disableLivePreview = true; // Disable Live Preview due to https://github.com/Microsoft/vscode/issues/49138
+			break;
+		}
+	}
+
 	let inPreview = false;
 	let currentValue = '';
 	const helper = getEmmetHelper();
 
 	// Fetch general information for the succesive expansions. i.e. the ranges to replace and its contents
-	let rangesToReplace: PreviewRangesWithContent[] = editor.selections.sort((a: vscode.Selection, b: vscode.Selection) => { return a.start.compareTo(b.start); }).map(selection => {
+	let rangesToReplace: PreviewRangesWithContent[] = selections.map(selection => {
 		let rangeToReplace: vscode.Range = selection.isReversed ? new vscode.Range(selection.active, selection.anchor) : selection;
 		if (!rangeToReplace.isSingleLine && rangeToReplace.end.character === 0) {
 			const previousLine = rangeToReplace.end.line - 1;
@@ -191,6 +203,9 @@ function doWrapping(individualLines: boolean, args: any) {
 	}
 
 	function inputChanged(value: string): string {
+		if (disableLivePreview) {
+			return '';
+		}
 		if (value !== currentValue) {
 			currentValue = value;
 			makeChanges(value, false).then((out) => {
@@ -376,13 +391,13 @@ export function isValidLocationForEmmetAbbreviation(document: vscode.TextDocumen
 				&& position.isAfterOrEqual(propertyNode.separatorToken.end)
 				&& position.isBeforeOrEqual(propertyNode.terminatorToken.start)
 				&& abbreviation.indexOf(':') === -1) {
-				return hexColorRegex.test(abbreviation);
+				return hexColorRegex.test(abbreviation) || abbreviation === '!';
 			}
 			if (!propertyNode.terminatorToken
 				&& propertyNode.separator
 				&& position.isAfterOrEqual(propertyNode.separatorToken.end)
 				&& abbreviation.indexOf(':') === -1) {
-				return hexColorRegex.test(abbreviation);
+				return hexColorRegex.test(abbreviation) || abbreviation === '!';
 			}
 		}
 
@@ -487,7 +502,11 @@ export function isValidLocationForEmmetAbbreviation(document: vscode.TextDocumen
 			continue;
 		}
 		if (char === endAngle) {
-			break;
+			if (i >= 0 && textToBackTrack[i] === '=') {
+				continue; // False alarm of cases like =>
+			} else {
+				break;
+			}
 		}
 		if (char === startAngle) {
 			valid = !foundSpace;

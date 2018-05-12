@@ -9,7 +9,7 @@ import { TPromise } from 'vs/base/common/winjs.base';
 import { mixin } from 'vs/base/common/objects';
 import * as vscode from 'vscode';
 import * as typeConvert from 'vs/workbench/api/node/extHostTypeConverters';
-import { Range, Disposable, CompletionList, SnippetString, CodeActionKind, HierarchicalSymbolInformation } from 'vs/workbench/api/node/extHostTypes';
+import { Range, Disposable, CompletionList, SnippetString, CodeActionKind, HierarchicalSymbolInformation, SymbolInformation } from 'vs/workbench/api/node/extHostTypes';
 import { ISingleEditOperation } from 'vs/editor/common/model';
 import * as modes from 'vs/editor/common/modes';
 import { ExtHostHeapService } from 'vs/workbench/api/node/extHostHeapService';
@@ -23,6 +23,7 @@ import { IPosition } from 'vs/editor/common/core/position';
 import { IRange } from 'vs/editor/common/core/range';
 import { isFalsyOrEmpty } from 'vs/base/common/arrays';
 import { isObject } from 'vs/base/common/types';
+import { ISelection, Selection } from 'vs/editor/common/core/selection';
 
 // --- adapter
 
@@ -39,13 +40,15 @@ class OutlineAdapter {
 	provideDocumentSymbols(resource: URI): TPromise<SymbolInformationDto[]> {
 		let doc = this._documents.getDocumentData(resource).document;
 		return asWinJsPromise(token => this._provider.provideDocumentSymbols(doc, token)).then(value => {
-			if (value instanceof HierarchicalSymbolInformation) {
-				return [typeConvert.HierarchicalSymbolInformation.from(value)];
+			if (isFalsyOrEmpty(value)) {
+				return undefined;
 			}
-			if (Array.isArray(value)) {
-				return value.map(typeConvert.SymbolInformation.from);
+			let [probe] = value;
+			if (probe instanceof HierarchicalSymbolInformation) {
+				return (<HierarchicalSymbolInformation[]>value).map(typeConvert.HierarchicalSymbolInformation.from);
+			} else {
+				return (<SymbolInformation[]>value).map(typeConvert.SymbolInformation.from);
 			}
-			return undefined;
 		});
 	}
 }
@@ -265,14 +268,16 @@ class CodeActionAdapter {
 		private readonly _provider: vscode.CodeActionProvider
 	) { }
 
-	provideCodeActions(resource: URI, range: IRange, context: modes.CodeActionContext): TPromise<CodeActionDto[]> {
+	provideCodeActions(resource: URI, rangeOrSelection: IRange | ISelection, context: modes.CodeActionContext): TPromise<CodeActionDto[]> {
 
 		const doc = this._documents.getDocumentData(resource).document;
-		const ran = <vscode.Range>typeConvert.Range.to(range);
+		const ran = Selection.isISelection(rangeOrSelection)
+			? <vscode.Selection>typeConvert.Selection.to(rangeOrSelection)
+			: <vscode.Range>typeConvert.Range.to(rangeOrSelection);
 		const allDiagnostics: vscode.Diagnostic[] = [];
 
 		for (const diagnostic of this._diagnostics.getDiagnostics(resource)) {
-			if (ran.contains(diagnostic.range)) {
+			if (ran.intersection(diagnostic.range)) {
 				allDiagnostics.push(diagnostic);
 			}
 		}
@@ -281,6 +286,7 @@ class CodeActionAdapter {
 			diagnostics: allDiagnostics,
 			only: context.only ? new CodeActionKind(context.only) : undefined
 		};
+
 		return asWinJsPromise(token =>
 			this._provider.provideCodeActions(doc, ran, codeActionContext, token)
 		).then(commandsOrActions => {
@@ -1035,8 +1041,8 @@ export class ExtHostLanguageFeatures implements ExtHostLanguageFeaturesShape {
 	}
 
 
-	$provideCodeActions(handle: number, resource: UriComponents, range: IRange, context: modes.CodeActionContext): TPromise<CodeActionDto[]> {
-		return this._withAdapter(handle, CodeActionAdapter, adapter => adapter.provideCodeActions(URI.revive(resource), range, context));
+	$provideCodeActions(handle: number, resource: UriComponents, rangeOrSelection: IRange | ISelection, context: modes.CodeActionContext): TPromise<CodeActionDto[]> {
+		return this._withAdapter(handle, CodeActionAdapter, adapter => adapter.provideCodeActions(URI.revive(resource), rangeOrSelection, context));
 	}
 
 	// --- formatting
