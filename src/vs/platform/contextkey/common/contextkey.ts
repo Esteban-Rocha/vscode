@@ -2,13 +2,12 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-'use strict';
 
 import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
 import { Event } from 'vs/base/common/event';
 import { isFalsyOrWhitespace } from 'vs/base/common/strings';
 
-export enum ContextKeyExprType {
+export const enum ContextKeyExprType {
 	Defined = 1,
 	Not = 2,
 	Equals = 3,
@@ -401,7 +400,10 @@ export class ContextKeyRegexExpr implements ContextKeyExpr {
 	}
 
 	public serialize(): string {
-		return `${this.key} =~ /${this.regexp ? this.regexp.source : '<invalid>'}/${this.regexp.ignoreCase ? 'i' : ''}`;
+		const value = this.regexp
+			? `/${this.regexp.source}/${this.regexp.ignoreCase ? 'i' : ''}`
+			: '/invalid/';
+		return `${this.key} =~ ${value}`;
 	}
 
 	public keys(): string[] {

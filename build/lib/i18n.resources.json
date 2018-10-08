@@ -35,6 +35,10 @@
 			"project": "vscode-workbench"
 		},
 		{
+			"name": "vs/workbench/parts/comments",
+			"project": "vscode-workbench"
+		},
+		{
 			"name": "vs/workbench/parts/debug",
 			"project": "vscode-workbench"
 		},
@@ -75,6 +79,10 @@
 			"project": "vscode-workbench"
 		},
 		{
+			"name": "vs/workbench/parts/navigation",
+			"project": "vscode-workbench"
+		},
+		{
 			"name": "vs/workbench/parts/output",
 			"project": "vscode-workbench"
 		},
@@ -104,6 +112,10 @@
 		},
 		{
 			"name": "vs/workbench/parts/snippets",
+			"project": "vscode-workbench"
+		},
+		{
+			"name": "vs/workbench/parts/stats",
 			"project": "vscode-workbench"
 		},
 		{
@@ -144,6 +156,10 @@
 		},
 		{
 			"name": "vs/workbench/parts/welcome",
+			"project": "vscode-workbench"
+		},
+		{
+			"name": "vs/workbench/parts/outline",
 			"project": "vscode-workbench"
 		},
 		{

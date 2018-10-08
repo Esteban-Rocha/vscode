@@ -3,8 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-'use strict';
-
 import * as assert from 'assert';
 
 import { StorageScope } from 'vs/platform/storage/common/storage';
@@ -12,7 +10,7 @@ import { Memento, Scope } from 'vs/workbench/common/memento';
 import { StorageService, InMemoryLocalStorage } from 'vs/platform/storage/common/storageService';
 import { TestWorkspace } from 'vs/platform/workspace/test/common/testWorkspace';
 
-suite('Workbench Memento', () => {
+suite('Memento', () => {
 	let context: Scope = undefined;
 	let storage: StorageService;
 

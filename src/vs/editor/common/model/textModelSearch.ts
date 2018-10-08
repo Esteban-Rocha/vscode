@@ -2,7 +2,6 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-'use strict';
 
 import * as strings from 'vs/base/common/strings';
 import { Position } from 'vs/editor/common/core/position';
@@ -46,7 +45,7 @@ export class SearchParams {
 				}
 
 				const nextChCode = searchString.charCodeAt(i);
-				if (nextChCode === CharCode.n || nextChCode === CharCode.r) {
+				if (nextChCode === CharCode.n || nextChCode === CharCode.r || nextChCode === CharCode.W) {
 					return true;
 				}
 			}
@@ -185,23 +184,6 @@ export class TextModelSearch {
 		}
 
 		if (searchData.regex.multiline) {
-			if (searchData.regex.source === '\\n') {
-				// Fast path for searching for EOL
-				let result: FindMatch[] = [], resultLen = 0;
-				for (let lineNumber = 1, lineCount = model.getLineCount(); lineNumber < lineCount; lineNumber++) {
-					const range = new Range(lineNumber, model.getLineMaxColumn(lineNumber), lineNumber + 1, 1);
-					if (captureMatches) {
-						result[resultLen++] = new FindMatch(range, null);
-					} else {
-						result[resultLen++] = new FindMatch(range, ['\n']);
-					}
-
-					if (resultLen >= limitResultCount) {
-						break;
-					}
-				}
-				return result;
-			}
 			return this._doFindMatchesMultiline(model, searchRange, new Searcher(searchData.wordSeparators, searchData.regex), captureMatches, limitResultCount);
 		}
 		return this._doFindMatchesLineByLine(model, searchRange, searchData, captureMatches, limitResultCount);

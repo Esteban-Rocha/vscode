@@ -2,7 +2,6 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-'use strict';
 
 import * as strings from 'vs/base/common/strings';
 import { Range } from 'vs/editor/common/core/range';
@@ -186,6 +185,9 @@ export class BracketsUtils {
 
 		let matchOffset = m.index;
 		let matchLength = m[0].length;
+		if (matchLength === 0) {
+			return null;
+		}
 		let absoluteMatchOffset = offset + matchOffset;
 
 		return new Range(lineNumber, absoluteMatchOffset + 1, lineNumber, absoluteMatchOffset + 1 + matchLength);

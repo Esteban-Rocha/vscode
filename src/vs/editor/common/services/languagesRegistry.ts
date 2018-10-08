@@ -2,7 +2,6 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-'use strict';
 
 import { onUnexpectedError } from 'vs/base/common/errors';
 import * as mime from 'vs/base/common/mime';
@@ -13,6 +12,7 @@ import { ILanguageExtensionPoint } from 'vs/editor/common/services/modeService';
 import { LanguageId, LanguageIdentifier } from 'vs/editor/common/modes';
 import { NULL_MODE_ID, NULL_LANGUAGE_IDENTIFIER } from 'vs/editor/common/modes/nullMode';
 import { IConfigurationRegistry, Extensions } from 'vs/platform/configuration/common/configurationRegistry';
+import { URI } from 'vs/base/common/uri';
 
 const hasOwnProperty = Object.prototype.hasOwnProperty;
 
@@ -23,7 +23,7 @@ export interface IResolvedLanguage {
 	aliases: string[];
 	extensions: string[];
 	filenames: string[];
-	configurationFiles: string[];
+	configurationFiles: URI[];
 }
 
 export class LanguagesRegistry {
@@ -188,7 +188,7 @@ export class LanguagesRegistry {
 			}
 		}
 
-		if (typeof lang.configuration === 'string') {
+		if (lang.configuration) {
 			resolvedLanguage.configurationFiles.push(lang.configuration);
 		}
 	}
@@ -224,7 +224,7 @@ export class LanguagesRegistry {
 		return this._lowercaseNameMap[languageNameLower].language;
 	}
 
-	public getConfigurationFiles(modeId: string): string[] {
+	public getConfigurationFiles(modeId: string): URI[] {
 		if (!hasOwnProperty.call(this._languages, modeId)) {
 			return [];
 		}
@@ -291,11 +291,11 @@ export class LanguagesRegistry {
 		return [];
 	}
 
-	public getModeIdsFromFilenameOrFirstLine(filename: string, firstLine?: string): string[] {
-		if (!filename && !firstLine) {
+	public getModeIdsFromFilepathOrFirstLine(filepath: string, firstLine?: string): string[] {
+		if (!filepath && !firstLine) {
 			return [];
 		}
-		let mimeTypes = mime.guessMimeTypes(filename, firstLine);
+		let mimeTypes = mime.guessMimeTypes(filepath, firstLine);
 		return this.extractModeIds(mimeTypes.join(','));
 	}
 

@@ -2,8 +2,6 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-'use strict';
-
 import * as assert from 'assert';
 import { TextModel } from 'vs/editor/common/model/textModel';
 import { IDisposable } from 'vs/base/common/lifecycle';
@@ -595,5 +593,26 @@ suite('TextModel.getLineIndentGuide', () => {
 			[3, '\t\t\tlabel(for)'],
 			[0, 'include script'],
 		]);
+	});
+
+	test('issue #49173', () => {
+		let model = TextModel.createFromString([
+			'class A {',
+			'	public m1(): void {',
+			'	}',
+			'	public m2(): void {',
+			'	}',
+			'	public m3(): void {',
+			'	}',
+			'	public m4(): void {',
+			'	}',
+			'	public m5(): void {',
+			'	}',
+			'}',
+		].join('\n'));
+
+		const actual = model.getActiveIndentGuide(2, 4, 9);
+		assert.deepEqual(actual, { startLineNumber: 2, endLineNumber: 9, indent: 1 });
+		model.dispose();
 	});
 });

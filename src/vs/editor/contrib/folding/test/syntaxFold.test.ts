@@ -2,8 +2,6 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-'use strict';
-
 import * as assert from 'assert';
 import { TextModel } from 'vs/editor/common/model/textModel';
 import { SyntaxRangeProvider } from 'vs/editor/contrib/folding/syntaxRangeProvider';
@@ -76,7 +74,7 @@ suite('Syntax folding', () => {
 		let providers = [new TestFoldingRangeProvider(model, ranges)];
 
 		async function assertLimit(maxEntries: number, expectedRanges: IndentRange[], message: string) {
-			let indentRanges = await new SyntaxRangeProvider(providers, maxEntries).compute(model, CancellationToken.None);
+			let indentRanges = await new SyntaxRangeProvider(model, providers, maxEntries).compute(CancellationToken.None);
 			let actual = [];
 			for (let i = 0; i < indentRanges.length; i++) {
 				actual.push({ start: indentRanges.getStartLineNumber(i), end: indentRanges.getEndLineNumber(i) });

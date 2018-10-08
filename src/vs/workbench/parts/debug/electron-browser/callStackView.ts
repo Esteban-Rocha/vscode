@@ -7,10 +7,9 @@ import * as nls from 'vs/nls';
 import { RunOnceScheduler } from 'vs/base/common/async';
 import * as dom from 'vs/base/browser/dom';
 import { TPromise } from 'vs/base/common/winjs.base';
-import * as errors from 'vs/base/common/errors';
-import { TreeViewsViewletPanel, IViewletViewOptions, IViewOptions } from 'vs/workbench/browser/parts/views/viewsViewlet';
-import { IDebugService, State, IStackFrame, ISession, IThread, CONTEXT_CALLSTACK_ITEM_TYPE } from 'vs/workbench/parts/debug/common/debug';
-import { Thread, StackFrame, ThreadAndSessionIds, Session, Model } from 'vs/workbench/parts/debug/common/debugModel';
+import { TreeViewsViewletPanel, IViewletViewOptions } from 'vs/workbench/browser/parts/views/viewsViewlet';
+import { IDebugService, State, IStackFrame, IDebugSession, IThread, CONTEXT_CALLSTACK_ITEM_TYPE } from 'vs/workbench/parts/debug/common/debug';
+import { Thread, StackFrame, ThreadAndSessionIds, DebugModel } from 'vs/workbench/parts/debug/common/debugModel';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { MenuId } from 'vs/platform/actions/common/actions';
@@ -20,12 +19,14 @@ import { ITree, IActionProvider, IDataSource, IRenderer, IAccessibilityProvider 
 import { IAction, IActionItem } from 'vs/base/common/actions';
 import { RestartAction, StopAction, ContinueAction, StepOverAction, StepIntoAction, StepOutAction, PauseAction, RestartFrameAction, TerminateThreadAction } from 'vs/workbench/parts/debug/browser/debugActions';
 import { CopyStackTraceAction } from 'vs/workbench/parts/debug/electron-browser/electronDebugActions';
-import { IWorkspaceContextService, WorkbenchState } from 'vs/platform/workspace/common/workspace';
 import { TreeResourceNavigator, WorkbenchTree } from 'vs/platform/list/browser/listService';
-import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
+import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { Separator } from 'vs/base/browser/ui/actionbar/actionbar';
 import { IContextKey, IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
+import { IViewletPanelOptions } from 'vs/workbench/browser/parts/views/panelViewlet';
+import { ILabelService } from 'vs/platform/label/common/label';
+import { DebugSession } from 'vs/workbench/parts/debug/electron-browser/debugSession';
 
 const $ = dom.$;
 
@@ -47,11 +48,11 @@ export class CallStackView extends TreeViewsViewletPanel {
 		@IDebugService private debugService: IDebugService,
 		@IKeybindingService keybindingService: IKeybindingService,
 		@IInstantiationService private instantiationService: IInstantiationService,
-		@IWorkbenchEditorService private editorService: IWorkbenchEditorService,
+		@IEditorService private editorService: IEditorService,
 		@IConfigurationService configurationService: IConfigurationService,
 		@IContextKeyService contextKeyService: IContextKeyService
 	) {
-		super({ ...(options as IViewOptions), ariaHeaderLabel: nls.localize('callstackSection', "Call Stack Section") }, keybindingService, contextMenuService, configurationService);
+		super({ ...(options as IViewletPanelOptions), ariaHeaderLabel: nls.localize('callstackSection', "Call Stack Section") }, keybindingService, contextMenuService, configurationService);
 		this.settings = options.viewletSettings;
 		this.callStackItemType = CONTEXT_CALLSTACK_ITEM_TYPE.bindTo(contextKeyService);
 
@@ -80,15 +81,15 @@ export class CallStackView extends TreeViewsViewletPanel {
 
 			this.needsRefresh = false;
 			(this.tree.getInput() === newTreeInput ? this.tree.refresh() : this.tree.setInput(newTreeInput))
-				.done(() => this.updateTreeSelection(), errors.onUnexpectedError);
+				.then(() => this.updateTreeSelection());
 		}, 50);
 	}
 
 	protected renderHeaderTitle(container: HTMLElement): void {
-		const title = dom.append(container, $('.title.debug-call-stack-title'));
-		const name = dom.append(title, $('span'));
-		name.textContent = this.options.name;
-		this.pauseMessage = dom.append(title, $('span.pause-message'));
+		let titleContainer = dom.append(container, $('.debug-call-stack-title'));
+		super.renderHeaderTitle(titleContainer, this.options.title);
+
+		this.pauseMessage = dom.append(titleContainer, $('span.pause-message'));
 		this.pauseMessage.hidden = true;
 		this.pauseMessageLabel = dom.append(this.pauseMessage, $('span.label'));
 	}
@@ -119,12 +120,12 @@ export class CallStackView extends TreeViewsViewletPanel {
 			const element = e.element;
 			if (element instanceof StackFrame) {
 				this.debugService.focusStackFrame(element, element.thread, element.thread.session, true);
-				element.openInEditor(this.editorService, e.editorOptions.preserveFocus, e.sideBySide, e.editorOptions.pinned).done(undefined, errors.onUnexpectedError);
+				element.openInEditor(this.editorService, e.editorOptions.preserveFocus, e.sideBySide, e.editorOptions.pinned);
 			}
 			if (element instanceof Thread) {
 				this.debugService.focusStackFrame(undefined, element, element.session, true);
 			}
-			if (element instanceof Session) {
+			if (element instanceof DebugSession) {
 				this.debugService.focusStackFrame(undefined, undefined, element, true);
 			}
 			if (element instanceof ThreadAndSessionIds) {
@@ -132,7 +133,7 @@ export class CallStackView extends TreeViewsViewletPanel {
 				const thread = session && session.getThread(element.threadId);
 				if (thread) {
 					(<Thread>thread).fetchCallStack()
-						.done(() => this.tree.refresh(), errors.onUnexpectedError);
+						.then(() => this.tree.refresh());
 				}
 			}
 		}));
@@ -142,7 +143,7 @@ export class CallStackView extends TreeViewsViewletPanel {
 				this.callStackItemType.set('stackFrame');
 			} else if (focus instanceof Thread) {
 				this.callStackItemType.set('thread');
-			} else if (focus instanceof Session) {
+			} else if (focus instanceof DebugSession) {
 				this.callStackItemType.set('session');
 			} else {
 				this.callStackItemType.reset();
@@ -165,7 +166,7 @@ export class CallStackView extends TreeViewsViewletPanel {
 				return;
 			}
 
-			this.updateTreeSelection().done(undefined, errors.onUnexpectedError);
+			this.updateTreeSelection();
 		}));
 
 		// Schedule the update of the call stack tree if the viewlet is opened after a session started #14684
@@ -184,13 +185,13 @@ export class CallStackView extends TreeViewsViewletPanel {
 	private updateTreeSelection(): TPromise<void> {
 		if (!this.tree.getInput()) {
 			// Tree not initialized yet
-			return TPromise.as(null);
+			return Promise.resolve(null);
 		}
 
 		const stackFrame = this.debugService.getViewModel().focusedStackFrame;
 		const thread = this.debugService.getViewModel().focusedThread;
 		const session = this.debugService.getViewModel().focusedSession;
-		const updateSelection = (element: IStackFrame | ISession) => {
+		const updateSelection = (element: IStackFrame | IDebugSession) => {
 			this.ignoreSelectionChangedEvent = true;
 			try {
 				this.tree.setSelection([element]);
@@ -202,7 +203,7 @@ export class CallStackView extends TreeViewsViewletPanel {
 		if (!thread) {
 			if (!session) {
 				this.tree.clearSelection();
-				return TPromise.as(null);
+				return Promise.resolve(null);
 			}
 
 			updateSelection(session);
@@ -211,7 +212,7 @@ export class CallStackView extends TreeViewsViewletPanel {
 
 		return this.tree.expandAll([thread.session, thread]).then(() => {
 			if (!stackFrame) {
-				return TPromise.as(null);
+				return Promise.resolve(null);
 			}
 
 			updateSelection(stackFrame);
@@ -260,7 +261,7 @@ class CallStackActionProvider implements IActionProvider {
 	}
 
 	public getActions(tree: ITree, element: any): TPromise<IAction[]> {
-		return TPromise.as([]);
+		return Promise.resolve([]);
 	}
 
 	public hasSecondaryActions(tree: ITree, element: any): boolean {
@@ -269,7 +270,7 @@ class CallStackActionProvider implements IActionProvider {
 
 	public getSecondaryActions(tree: ITree, element: any): TPromise<IAction[]> {
 		const actions: IAction[] = [];
-		if (element instanceof Session) {
+		if (element instanceof DebugSession) {
 			actions.push(this.instantiationService.createInstance(RestartAction, RestartAction.ID, RestartAction.LABEL));
 			actions.push(new StopAction(StopAction.ID, StopAction.LABEL, this.debugService, this.keybindingService));
 		} else if (element instanceof Thread) {
@@ -286,13 +287,13 @@ class CallStackActionProvider implements IActionProvider {
 			actions.push(new Separator());
 			actions.push(new TerminateThreadAction(TerminateThreadAction.ID, TerminateThreadAction.LABEL, this.debugService, this.keybindingService));
 		} else if (element instanceof StackFrame) {
-			if (element.thread.session.raw.capabilities.supportsRestartFrame) {
+			if (element.thread.session.capabilities.supportsRestartFrame) {
 				actions.push(new RestartFrameAction(RestartFrameAction.ID, RestartFrameAction.LABEL, this.debugService, this.keybindingService));
 			}
 			actions.push(new CopyStackTraceAction(CopyStackTraceAction.ID, CopyStackTraceAction.LABEL));
 		}
 
-		return TPromise.as(actions);
+		return Promise.resolve(actions);
 	}
 
 	public getActionItem(tree: ITree, element: any, action: IAction): IActionItem {
@@ -311,30 +312,30 @@ class CallStackDataSource implements IDataSource {
 	}
 
 	public hasChildren(tree: ITree, element: any): boolean {
-		return element instanceof Model || element instanceof Session || (element instanceof Thread && (<Thread>element).stopped);
+		return element instanceof DebugModel || element instanceof DebugSession || (element instanceof Thread && (<Thread>element).stopped);
 	}
 
 	public getChildren(tree: ITree, element: any): TPromise<any> {
 		if (element instanceof Thread) {
 			return this.getThreadChildren(element);
 		}
-		if (element instanceof Model) {
-			return TPromise.as(element.getSessions());
+		if (element instanceof DebugModel) {
+			return Promise.resolve(element.getSessions());
 		}
 
-		const session = <ISession>element;
-		return TPromise.as(session.getAllThreads());
+		const session = <IDebugSession>element;
+		return Promise.resolve(session.getAllThreads());
 	}
 
 	private getThreadChildren(thread: Thread): TPromise<any> {
 		let callStack: any[] = thread.getCallStack();
-		let callStackPromise: TPromise<any> = TPromise.as(null);
+		let callStackPromise: TPromise<any> = Promise.resolve(null);
 		if (!callStack || !callStack.length) {
 			callStackPromise = thread.fetchCallStack().then(() => callStack = thread.getCallStack());
 		}
 
 		return callStackPromise.then(() => {
-			if (callStack.length === 1 && thread.session.raw.capabilities.supportsDelayedStackTraceLoading) {
+			if (callStack.length === 1 && thread.session.capabilities.supportsDelayedStackTraceLoading) {
 				// To reduce flashing of the call stack view simply append the stale call stack
 				// once we have the correct data the tree will refresh and we will no longer display it.
 				callStack = callStack.concat(thread.getStaleCallStack().slice(1));
@@ -352,7 +353,7 @@ class CallStackDataSource implements IDataSource {
 	}
 
 	public getParent(tree: ITree, element: any): TPromise<any> {
-		return TPromise.as(null);
+		return Promise.resolve(null);
 	}
 }
 
@@ -395,7 +396,7 @@ class CallStackRenderer implements IRenderer {
 	private static readonly SESSION_TEMPLATE_ID = 'session';
 
 	constructor(
-		@IWorkspaceContextService private contextService: IWorkspaceContextService,
+		@ILabelService private labelService: ILabelService
 	) {
 		// noop
 	}
@@ -405,7 +406,7 @@ class CallStackRenderer implements IRenderer {
 	}
 
 	public getTemplateId(tree: ITree, element: any): string {
-		if (element instanceof Session) {
+		if (element instanceof DebugSession) {
 			return CallStackRenderer.SESSION_TEMPLATE_ID;
 		}
 		if (element instanceof Thread) {
@@ -475,13 +476,13 @@ class CallStackRenderer implements IRenderer {
 		} else if (templateId === CallStackRenderer.ERROR_TEMPLATE_ID) {
 			this.renderError(element, templateData);
 		} else if (templateId === CallStackRenderer.LOAD_MORE_TEMPLATE_ID) {
-			this.renderLoadMore(element, templateData);
+			this.renderLoadMore(templateData);
 		}
 	}
 
-	private renderSession(session: ISession, data: ISessionTemplateData): void {
+	private renderSession(session: IDebugSession, data: ISessionTemplateData): void {
 		data.session.title = nls.localize({ key: 'session', comment: ['Session is a noun'] }, "Session");
-		data.name.textContent = session.getName(this.contextService.getWorkbenchState() === WorkbenchState.WORKSPACE);
+		data.name.textContent = session.getLabel();
 		const stoppedThread = session.getAllThreads().filter(t => t.stopped).pop();
 
 		data.stateLabel.textContent = stoppedThread ? nls.localize('paused', "Paused")
@@ -505,7 +506,7 @@ class CallStackRenderer implements IRenderer {
 		data.label.title = element;
 	}
 
-	private renderLoadMore(element: any, data: ILoadMoreTemplateData): void {
+	private renderLoadMore(data: ILoadMoreTemplateData): void {
 		data.label.textContent = nls.localize('loadMoreStackFrames', "Load More Stack Frames");
 	}
 
@@ -514,7 +515,7 @@ class CallStackRenderer implements IRenderer {
 		dom.toggleClass(data.stackFrame, 'label', stackFrame.presentationHint === 'label');
 		dom.toggleClass(data.stackFrame, 'subtle', stackFrame.presentationHint === 'subtle');
 
-		data.file.title = stackFrame.source.raw.path || stackFrame.source.name;
+		data.file.title = stackFrame.source.inMemory ? stackFrame.source.name : this.labelService.getUriLabel(stackFrame.source.uri);
 		if (stackFrame.source.raw.origin) {
 			data.file.title += `\n${stackFrame.source.raw.origin}`;
 		}

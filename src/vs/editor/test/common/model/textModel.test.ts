@@ -2,8 +2,6 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-'use strict';
-
 import * as assert from 'assert';
 import { Position } from 'vs/editor/common/core/position';
 import { Range } from 'vs/editor/common/core/range';
@@ -550,6 +548,32 @@ suite('Editor Model - TextModel', () => {
 		]);
 	});
 
+	test('issue #55818: Broken indentation detection', () => {
+		assertGuess(true, 2, [
+			'',
+			'/* REQUIRE */',
+			'',
+			'const foo = require ( \'foo\' ),',
+			'      bar = require ( \'bar\' );',
+			'',
+			'/* MY FN */',
+			'',
+			'function myFn () {',
+			'',
+			'  const asd = 1,',
+			'        dsa = 2;',
+			'',
+			'  return bar ( foo ( asd ) );',
+			'',
+			'}',
+			'',
+			'/* EXPORT */',
+			'',
+			'module.exports = myFn;',
+			'',
+		]);
+	});
+
 	test('validatePosition', () => {
 
 		let m = TextModel.createFromString('line one\nline two');
@@ -618,6 +642,18 @@ suite('Editor Model - TextModel', () => {
 		assert.deepEqual(m.validatePosition(new Position(1, 6)), new Position(1, 6));
 		assert.deepEqual(m.validatePosition(new Position(1, 7)), new Position(1, 7));
 
+	});
+
+	test('validatePosition handle NaN.', () => {
+
+		let m = TextModel.createFromString('line one\nline two');
+
+		assert.deepEqual(m.validatePosition(new Position(NaN, 1)), new Position(1, 1));
+		assert.deepEqual(m.validatePosition(new Position(1, NaN)), new Position(1, 1));
+
+		assert.deepEqual(m.validatePosition(new Position(NaN, NaN)), new Position(1, 1));
+		assert.deepEqual(m.validatePosition(new Position(2, NaN)), new Position(2, 1));
+		assert.deepEqual(m.validatePosition(new Position(NaN, 3)), new Position(1, 3));
 	});
 
 	test('validateRange around high-low surrogate pairs 1', () => {
@@ -828,6 +864,12 @@ suite('Editor Model - TextModel', () => {
 		assert.equal(model.getLineLastNonWhitespaceColumn(10), 4, '10');
 		assert.equal(model.getLineLastNonWhitespaceColumn(11), 0, '11');
 		assert.equal(model.getLineLastNonWhitespaceColumn(12), 0, '12');
+	});
+
+	test('#50471. getValueInRange with invalid range', () => {
+		let m = TextModel.createFromString('My First Line\r\nMy Second Line\r\nMy Third Line');
+		assert.equal(m.getValueInRange(new Range(1, NaN, 1, 3)), 'My');
+		assert.equal(m.getValueInRange(new Range(NaN, NaN, NaN, NaN)), '');
 	});
 });
 

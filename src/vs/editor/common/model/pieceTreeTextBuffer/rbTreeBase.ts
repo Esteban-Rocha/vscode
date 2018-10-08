@@ -2,7 +2,6 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-'use strict';
 
 import { Piece, PieceTreeBase } from 'vs/editor/common/model/pieceTreeTextBuffer/pieceTreeBase';
 
@@ -78,16 +77,16 @@ export class TreeNode {
 	}
 }
 
+export const enum NodeColor {
+	Black = 0,
+	Red = 1,
+}
+
 export const SENTINEL: TreeNode = new TreeNode(null, NodeColor.Black);
 SENTINEL.parent = SENTINEL;
 SENTINEL.left = SENTINEL;
 SENTINEL.right = SENTINEL;
 SENTINEL.color = NodeColor.Black;
-
-export const enum NodeColor {
-	Black = 0,
-	Red = 1,
-}
 
 export function leftest(node: TreeNode): TreeNode {
 	while (node.left !== SENTINEL) {

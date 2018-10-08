@@ -4,10 +4,13 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
+import { URI } from 'vs/base/common/uri';
 
 export interface ParsedArgs {
 	[arg: string]: any;
 	_: string[];
+	'folder-uri'?: string | string[];
+	'file-uri'?: string | string[];
 	_urls?: string[];
 	help?: boolean;
 	version?: boolean;
@@ -25,11 +28,15 @@ export interface ParsedArgs {
 	performance?: boolean;
 	'prof-startup'?: string;
 	'prof-startup-prefix'?: string;
+	'prof-append-timers'?: string;
 	verbose?: boolean;
+	trace?: boolean;
+	'trace-category-filter'?: string;
+	'trace-options'?: string;
 	log?: string;
 	logExtensionHostCommunication?: boolean;
-	'disable-extensions'?: boolean;
 	'extensions-dir'?: string;
+	'builtin-extensions-dir'?: string;
 	extensionDevelopmentPath?: string;
 	extensionTestsPath?: string;
 	debugPluginHost?: string;
@@ -37,6 +44,8 @@ export interface ParsedArgs {
 	debugId?: string;
 	debugSearch?: string;
 	debugBrkSearch?: string;
+	'disable-extensions'?: boolean;
+	'disable-extension'?: string | string[];
 	'list-extensions'?: boolean;
 	'show-versions'?: boolean;
 	'install-extension'?: string | string[];
@@ -99,9 +108,10 @@ export interface IEnvironmentService {
 	workspacesHome: string;
 
 	isExtensionDevelopment: boolean;
-	disableExtensions: boolean;
+	disableExtensions: boolean | string[];
+	builtinExtensionsPath: string;
 	extensionsPath: string;
-	extensionDevelopmentPath: string;
+	extensionDevelopmentLocationURI: URI;
 	extensionTestsPath: string;
 
 	debugExtensionHost: IExtensionHostDebugParams;
@@ -116,6 +126,7 @@ export interface IEnvironmentService {
 	performance: boolean;
 
 	// logging
+	log: string;
 	logsPath: string;
 	verbose: boolean;
 

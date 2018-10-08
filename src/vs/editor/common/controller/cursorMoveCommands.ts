@@ -2,7 +2,6 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-'use strict';
 
 import { SingleCursorState, ICursorSimpleModel, CursorState, CursorContext } from 'vs/editor/common/controller/cursorCommon';
 import { Position, IPosition } from 'vs/editor/common/core/position';
@@ -14,22 +13,30 @@ import { ICommandHandlerDescription } from 'vs/platform/commands/common/commands
 
 export class CursorMoveCommands {
 
-	public static addCursorDown(context: CursorContext, cursors: CursorState[]): CursorState[] {
+	public static addCursorDown(context: CursorContext, cursors: CursorState[], useLogicalLine: boolean): CursorState[] {
 		let result: CursorState[] = [], resultLen = 0;
 		for (let i = 0, len = cursors.length; i < len; i++) {
 			const cursor = cursors[i];
 			result[resultLen++] = new CursorState(cursor.modelState, cursor.viewState);
-			result[resultLen++] = CursorState.fromViewState(MoveOperations.translateDown(context.config, context.viewModel, cursor.viewState));
+			if (useLogicalLine) {
+				result[resultLen++] = CursorState.fromModelState(MoveOperations.translateDown(context.config, context.model, cursor.modelState));
+			} else {
+				result[resultLen++] = CursorState.fromViewState(MoveOperations.translateDown(context.config, context.viewModel, cursor.viewState));
+			}
 		}
 		return result;
 	}
 
-	public static addCursorUp(context: CursorContext, cursors: CursorState[]): CursorState[] {
+	public static addCursorUp(context: CursorContext, cursors: CursorState[], useLogicalLine: boolean): CursorState[] {
 		let result: CursorState[] = [], resultLen = 0;
 		for (let i = 0, len = cursors.length; i < len; i++) {
 			const cursor = cursors[i];
 			result[resultLen++] = new CursorState(cursor.modelState, cursor.viewState);
-			result[resultLen++] = CursorState.fromViewState(MoveOperations.translateUp(context.config, context.viewModel, cursor.viewState));
+			if (useLogicalLine) {
+				result[resultLen++] = CursorState.fromModelState(MoveOperations.translateUp(context.config, context.model, cursor.modelState));
+			} else {
+				result[resultLen++] = CursorState.fromViewState(MoveOperations.translateUp(context.config, context.viewModel, cursor.viewState));
+			}
 		}
 		return result;
 	}
@@ -599,7 +606,7 @@ export namespace CursorMove {
 						\`\`\`
 						'left', 'right', 'up', 'down'
 						'wrappedLineStart', 'wrappedLineEnd', 'wrappedLineColumnCenter'
-						'wrappedLineFirstNonWhitespaceCharacter', 'wrappedLineLastNonWhitespaceCharacter',
+						'wrappedLineFirstNonWhitespaceCharacter', 'wrappedLineLastNonWhitespaceCharacter'
 						'viewPortTop', 'viewPortCenter', 'viewPortBottom', 'viewPortIfOutside'
 						\`\`\`
 					* 'by': Unit to move. Default is computed based on 'to' value.

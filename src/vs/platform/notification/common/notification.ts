@@ -3,8 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-'use strict';
-
 import BaseSeverity from 'vs/base/common/severity';
 import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
 import { IAction } from 'vs/base/common/actions';
@@ -205,7 +203,7 @@ export class NoOpNotification implements INotificationHandle {
 
 	private readonly _onDidClose: Emitter<void> = new Emitter();
 
-	public get onDidClose(): Event<void> {
+	get onDidClose(): Event<void> {
 		return this._onDidClose.event;
 	}
 
