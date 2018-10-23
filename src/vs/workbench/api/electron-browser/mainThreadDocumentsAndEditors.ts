@@ -28,23 +28,7 @@ import { IBulkEditService } from 'vs/editor/browser/services/bulkEditService';
 import { IPanelService } from 'vs/workbench/services/panel/common/panelService';
 import { BaseTextEditor } from 'vs/workbench/browser/parts/editor/textEditor';
 import { IEditor } from 'vs/editor/common/editorCommon';
-
-namespace mapset {
-
-	export function setValues<T>(set: Set<T>): T[] {
-		// return Array.from(set);
-		let ret: T[] = [];
-		set.forEach(v => ret.push(v));
-		return ret;
-	}
-
-	export function mapValues<T>(map: Map<any, T>): T[] {
-		// return Array.from(map.values());
-		let ret: T[] = [];
-		map.forEach(v => ret.push(v));
-		return ret;
-	}
-}
+import { values } from 'vs/base/common/map';
 
 namespace delta {
 
@@ -127,8 +111,8 @@ class DocumentAndEditorState {
 	static compute(before: DocumentAndEditorState, after: DocumentAndEditorState): DocumentAndEditorStateDelta {
 		if (!before) {
 			return new DocumentAndEditorStateDelta(
-				[], mapset.setValues(after.documents),
-				[], mapset.mapValues(after.textEditors),
+				[], values(after.documents),
+				[], values(after.textEditors),
 				undefined, after.activeEditor
 			);
 		}
@@ -246,7 +230,7 @@ class MainThreadDocumentAndEditorStateComputer {
 
 		// editor: only take those that have a not too large model
 		const editors = new Map<string, TextEditorSnapshot>();
-		let activeEditor: string = null;
+		let activeEditor: string | null = null;
 
 		for (const editor of this._codeEditorService.listCodeEditors()) {
 			if (editor.isSimpleWidget) {

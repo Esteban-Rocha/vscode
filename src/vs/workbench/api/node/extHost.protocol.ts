@@ -24,7 +24,7 @@ import { LabelRules } from 'vs/platform/label/common/label';
 import { LogLevel } from 'vs/platform/log/common/log';
 import { IMarkerData } from 'vs/platform/markers/common/markers';
 import { IPickOptions, IQuickInputButton, IQuickPickItem } from 'vs/platform/quickinput/common/quickInput';
-import { IPatternInfo, IQueryOptions, IRawFileMatch2, IRawSearchQuery, ISearchCompleteStats } from 'vs/platform/search/common/search';
+import { IPatternInfo, IRawFileMatch2, IRawQuery, ISearchCompleteStats, IRawTextQuery } from 'vs/platform/search/common/search';
 import { StatusbarAlignment as MainThreadStatusBarAlignment } from 'vs/platform/statusbar/common/statusbar';
 import { ITelemetryInfo } from 'vs/platform/telemetry/common/telemetry';
 import { ThemeColor } from 'vs/platform/theme/common/themeService';
@@ -41,6 +41,7 @@ import { IProgressOptions, IProgressStep } from 'vs/workbench/services/progress/
 import { SaveReason } from 'vs/workbench/services/textfile/common/textfiles';
 import * as vscode from 'vscode';
 import { CancellationToken } from 'vs/base/common/cancellation';
+import { ITextQueryBuilderOptions } from 'vs/workbench/parts/search/common/queryBuilder';
 
 export interface IEnvironment {
 	isExtensionDevelopmentDebug: boolean;
@@ -85,6 +86,11 @@ export interface IMainContext extends IRPCProtocol {
 }
 
 // --- main thread
+
+export interface MainThreadClipboardShape extends IDisposable {
+	$readText(): Promise<string>;
+	$writeText(value: string): Promise<void>;
+}
 
 export interface MainThreadCommandsShape extends IDisposable {
 	$registerCommand(id: string): void;
@@ -425,7 +431,7 @@ export interface MainThreadStatusBarShape extends IDisposable {
 
 export interface MainThreadStorageShape extends IDisposable {
 	$getValue<T>(shared: boolean, key: string): Thenable<T>;
-	$setValue(shared: boolean, key: string, value: any): Thenable<void>;
+	$setValue(shared: boolean, key: string, value: object): Thenable<void>;
 }
 
 export interface MainThreadTelemetryShape extends IDisposable {
@@ -477,10 +483,11 @@ export interface ExtHostUrlsShape {
 
 export interface MainThreadWorkspaceShape extends IDisposable {
 	$startFileSearch(includePattern: string, includeFolder: URI, excludePatternOrDisregardExcludes: string | false, maxResults: number, token: CancellationToken): Thenable<UriComponents[]>;
-	$startTextSearch(query: IPatternInfo, options: IQueryOptions, requestId: number, token: CancellationToken): Thenable<vscode.TextSearchComplete>;
+	$startTextSearch(query: IPatternInfo, options: ITextQueryBuilderOptions, requestId: number, token: CancellationToken): Thenable<vscode.TextSearchComplete>;
 	$checkExists(includes: string[], token: CancellationToken): Thenable<boolean>;
 	$saveAll(includeUntitled?: boolean): Thenable<boolean>;
 	$updateWorkspaceFolders(extensionName: string, index: number, deleteCount: number, workspaceFoldersToAdd: { uri: UriComponents, name?: string }[]): Thenable<void>;
+	$resolveProxy(url: string): Thenable<string>;
 }
 
 export interface IFileChangeDto {
@@ -702,9 +709,9 @@ export interface ExtHostFileSystemShape {
 }
 
 export interface ExtHostSearchShape {
-	$provideFileSearchResults(handle: number, session: number, query: IRawSearchQuery, token: CancellationToken): Thenable<ISearchCompleteStats>;
+	$provideFileSearchResults(handle: number, session: number, query: IRawQuery, token: CancellationToken): Thenable<ISearchCompleteStats>;
+	$provideTextSearchResults(handle: number, session: number, query: IRawTextQuery, token: CancellationToken): Thenable<ISearchCompleteStats>;
 	$clearCache(cacheKey: string): Thenable<void>;
-	$provideTextSearchResults(handle: number, session: number, pattern: IPatternInfo, query: IRawSearchQuery, token: CancellationToken): Thenable<ISearchCompleteStats>;
 }
 
 export interface ExtHostExtensionServiceShape {
@@ -1011,9 +1018,14 @@ export interface ExtHostCommentsShape {
 	$provideWorkspaceComments(handle: number): Thenable<modes.CommentThread[]>;
 }
 
+export interface ExtHostStorageShape {
+	$acceptValue(shared: boolean, key: string, value: object): void;
+}
+
 // --- proxy identifiers
 
 export const MainContext = {
+	MainThreadClipboard: <ProxyIdentifier<MainThreadClipboardShape>>createMainId<MainThreadClipboardShape>('MainThreadClipboard'),
 	MainThreadCommands: <ProxyIdentifier<MainThreadCommandsShape>>createMainId<MainThreadCommandsShape>('MainThreadCommands'),
 	MainThreadComments: createMainId<MainThreadCommentsShape>('MainThreadComments'),
 	MainThreadConfiguration: createMainId<MainThreadConfigurationShape>('MainThreadConfiguration'),
@@ -1075,6 +1087,7 @@ export const ExtHostContext = {
 	ExtHostWebviews: createExtId<ExtHostWebviewsShape>('ExtHostWebviews'),
 	ExtHostProgress: createMainId<ExtHostProgressShape>('ExtHostProgress'),
 	ExtHostComments: createMainId<ExtHostCommentsShape>('ExtHostComments'),
+	ExtHostStorage: createMainId<ExtHostStorageShape>('ExtHostStorage'),
 	ExtHostUrls: createExtId<ExtHostUrlsShape>('ExtHostUrls'),
 	ExtHostOutputService: createMainId<ExtHostOutputServiceShape>('ExtHostOutputService'),
 };
